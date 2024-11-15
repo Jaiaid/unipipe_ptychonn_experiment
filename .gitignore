@@ -1,0 +1,8 @@
+*.png
+*.csv
+*.log
+*.pth
+*.tar.gz
+*.txt
+*/__pycache__/*
+*.tsv
