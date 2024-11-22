@@ -3,6 +3,9 @@ import math
 import torch
 import numpy as np
 
+import logfast
+import logfast.fastlogger
+
 
 class DataStream:
     def __init__(self, datarate, deadline_sec, dataset: torch.utils.data.Dataset) -> None:
@@ -11,6 +14,7 @@ class DataStream:
         self.dataset_copy2 = self.dataset
         # print(type(self.dataset[0:2]),type(self.dataset[0:2][0]),self.dataset[0:2][0].shape)
         # exit(0)
+        self.start_time = 0
         self.last_query_time = None
         self.datarate = datarate
         self.deadline_sec = deadline_sec
@@ -23,7 +27,8 @@ class DataStream:
         pass
 
     def start_stream(self):
-        self.last_query_time = time.time()
+        self.start_time = time.time()
+        self.last_query_time = self.start_time
 
     def get_deadlinesec(self):
         return self.deadline_sec
@@ -31,72 +36,79 @@ class DataStream:
     def get_datarate(self):
         return self.datarate
 
-    def extract(self, bs=None):
+    def extract(self, bs=None, logger:logfast.fastlogger=None):
+        # first calculate how much time has passed
+        # we can use that to understand how much data has accumulated
         if self.last_query_time is not None:
             time_passed = time.time() - self.last_query_time
         else:
             time_passed = 1/self.datarate
+
+        if logger is not None:
+            logger.log("EXTRACT CALLED")
 
         # if time passed from last extraction > deadline, we have some stale requests
         if time_passed > self.deadline_sec:
             # we are assuming the deadline countdown starts afte whole request accumulates
             # therefore, missed count will be truncated, 0.5 missed half of the request is missed not complete
             missed = int((time_passed - self.deadline_sec) * self.datarate)
+
+            # bring the last query time forward to the point where the last non stale request started to arrive
+            # similarly change the time passed
+            self.last_query_time += missed / self.datarate
+            time_passed -= missed / self.datarate
+
+            # remove the missed data from accumulated
+            self.accumulated -= missed
         else:
             missed = 0
 
-        self.accumulated = int(self.datarate * time_passed) + self.accumulated - missed
-        if bs is None:
-            while self.accumulated == 0:
-                time_passed = time.time() - self.last_query_time
-                self.accumulated = int(self.datarate * time_passed)
-        else:
-            while self.accumulated < bs:
-                time_passed = time.time() - self.last_query_time
-                self.accumulated = int(self.datarate * time_passed)
-        # we have decided how much has passed, therefore mark the time here, not later
-        self.last_query_time = time.time()
+        # calculate how much non stale data has accumulated
+        self.accumulated += self.datarate * time_passed
 
-        # means greedy selection
-        if bs is None:
-            to_serve = self.accumulated
-        else:
-            to_serve = bs
-        # if to_serve > 5:
-        #     print(accumulation, missed, time_passed, self.datarate)
+        # take at least one reading to ensure we have updated the last query time
+        time_mark = time.time()
+        # we will start to count how much data has accumulated from this point
+        self.last_query_time = time_mark
+
+        # entering in this loop means not enough data has accumulated to be extracted
+        threshold_bs_size = 1 if bs is None else bs
+        while self.accumulated < threshold_bs_size:
+            time_mark = time.time()
+            self.accumulated += (time_mark - self.last_query_time) * self.datarate
+            self.last_query_time = time_mark
         
-        # to_serve = 1
-        # missed = accumulation - to_serve
-
-        # missed = int((time_passed - self.deadline_sec) * self.datarate)
-        # print(accumulation, missed, time_passed)
-        # print(time_passed, accumulation, missed, to_serve)
+        # no particular batch size requested means greedy selection
+        to_serve = int(self.accumulated) if bs is None else bs
 
         self.index = (self.index + missed) % len(self.dataset)
         # print(self.index, missed, to_serve, time_passed)
-        final_index = self.index + to_serve
-
+        final_index = (self.index + to_serve) % len(self.dataset)
         # TODO:
         # think about more precise deadline list
         # current assumption is that the last accumulated has completed arrival on last_query_time
         # which may not be the case, it may be in self.last_query_time - [0, 1/self.datarate)
         deadlines = [(self.last_query_time - i/self.datarate + self.deadline_sec) for i in range(to_serve - 1, -1, -1)]
-        if final_index < self.index:
-            data = (torch.hstack(self.dataset[self.index:final_index][0], self.dataset_copy2[:final_index][0]),
-                    torch.hstack(self.dataset[self.index:final_index][1], self.dataset_copy2[:final_index][1]),
-                    torch.hstack(self.dataset[self.index:final_index][2], self.dataset_copy2[:final_index][2]))
+        if final_index < self.index and final_index != 0:
+            data = (torch.vstack((self.dataset[self.index:][0], self.dataset_copy2[:final_index][0])),
+                    torch.vstack((self.dataset[self.index:][1], self.dataset_copy2[:final_index][1])),
+                    torch.vstack((self.dataset[self.index:][2], self.dataset_copy2[:final_index][2])))
         else:
+            final_index = self.index + to_serve
             # print(len(self.dataset[self.index:final_index]), self.dataset[self.index:final_index][0].shape)
             data = (self.dataset[self.index:final_index][0], self.dataset[self.index:final_index][1], self.dataset[self.index:final_index][2])
-        # print(len(data), data[0].shape)
 
-        self.transmitted += self.accumulated
+        # if not completely accumulated we don't consider it as transmitted
+        self.transmitted += int(self.accumulated) + missed
         self.missed += missed
         self.index = final_index
         # update accumulated data for next extraction
+        # to_serve amount will be given to callee, hence the subtraction
         self.accumulated -= to_serve
+        # print(self.accumulated, self.transmitted)
         # print(len(data), data[0][0].shape)
         return data, deadlines, missed
     
     def get_perf(self):
+        # print((time.time() - self.start_time) * self.datarate)
         return self.transmitted, self.transmitted - self.missed, self.missed
