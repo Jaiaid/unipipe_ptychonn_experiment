@@ -3,8 +3,11 @@ import os
 SEED = 2661
 
 H,W = 64,64
+IMGCOUNT = 161 # How many image
+DIFFRLINE = 161 # How many lines per image
 NLINES = 5 #How many lines of data to use for training?
 NLTEST = 60 #How many lines for the test set?
+
 
 N_VALID = 805 #How much to reserve for validation
 

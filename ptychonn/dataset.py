@@ -23,23 +23,38 @@ def get_dataset(nlines, nvalid_percentage, ntest_percentage):
     ground_truth_amp = np.abs(ground_truth_data)
     ground_truth_ph = np.angle(ground_truth_data)
 
-    total_line_count = min(nlines, diffr_data_red.shape[0])
-
-    test_start_line = int(total_line_count * ( 100 - ntest_percentage )/100)
+    total_line_count = parameters.DIFFRLINE
+    test_start_line = int(total_line_count * ( 100 - ntest_percentage)/100)
     valid_start_line = int(total_line_count * ( 100 - (nvalid_percentage + ntest_percentage ))/100)
     print(diffr_data_red[:valid_start_line,:].shape)
-    X_train = diffr_data_red[:valid_start_line,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    Y_I_train = ground_truth_amp[:valid_start_line,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    Y_phi_train = ground_truth_ph[:valid_start_line,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+    for i in range(parameters.IMGCOUNT):
+        if i == 0:
+            X_train = diffr_data_red[i, 0:valid_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+            Y_I_train = ground_truth_amp[i, 0:valid_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+            Y_phi_train = ground_truth_ph[i, 0:valid_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
 
-    X_valid = diffr_data_red[valid_start_line:test_start_line,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    Y_I_valid = ground_truth_amp[valid_start_line:test_start_line,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    Y_phi_valid = ground_truth_ph[valid_start_line:test_start_line,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    
-    X_test = diffr_data_red[test_start_line:,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    Y_I_test = ground_truth_amp[test_start_line:,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    Y_phi_test = ground_truth_ph[test_start_line:,:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
-    # print(total_sample_count, X_train[:valid_start_idx,:].shape, X_train[valid_start_idx:test_start_idx,:].shape, X_train[test_start_idx:,:].shape, test_start_idx)
+            X_valid = diffr_data_red[i, valid_start_line:test_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+            Y_I_valid = ground_truth_amp[i, valid_start_line:test_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+            Y_phi_valid = ground_truth_ph[i, valid_start_line:test_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+            
+            X_test = diffr_data_red[i, test_start_line:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+            Y_I_test = ground_truth_amp[i, test_start_line:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+            Y_phi_test = ground_truth_ph[i, test_start_line:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]
+        else:
+            X_train = np.vstack((X_train, diffr_data_red[i, 0:valid_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+            Y_I_train = np.vstack((Y_I_train, ground_truth_amp[i, 0:valid_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+            Y_phi_train = np.vstack((Y_phi_train, ground_truth_ph[i, 0:valid_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+
+            X_valid = np.vstack((X_valid, diffr_data_red[i, valid_start_line:test_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+            Y_I_valid = np.vstack((Y_I_valid, ground_truth_amp[i, valid_start_line:test_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+            Y_phi_valid = np.vstack((Y_phi_valid, ground_truth_ph[i, valid_start_line:test_start_line].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+            
+            X_test = np.vstack((X_test, diffr_data_red[i, test_start_line:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+            Y_I_test = np.vstack((Y_I_test, ground_truth_amp[i, test_start_line:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+            Y_phi_test = np.vstack((Y_phi_test, ground_truth_ph[i, test_start_line:].reshape(-1,parameters.H,parameters.W)[:,np.newaxis,:,:]))
+
+    print(X_train.shape, X_valid.shape, X_test.shape, test_start_line)
+
     return {"train": (X_train, Y_I_train, Y_phi_train),
             "valid": (X_valid, Y_I_valid, Y_phi_valid),
             "test": (X_test, Y_I_test, Y_phi_test)}
