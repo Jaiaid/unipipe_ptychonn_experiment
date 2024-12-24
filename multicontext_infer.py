@@ -48,8 +48,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("--interval-count", "-icount", type=int, required=True, help="number of interval")
     arg_parser.add_argument("--datarate", "-drate", type=int, required=True, help="request/datasample per second")
     arg_parser.add_argument("--deadline", "-dead", type=int, required=True, help="each request deadline after arrival in millisecond")
+    arg_parser.add_argument("--batch-size", "-bs", type=int, default=None, help="batch size of test stream")
     arg_parser.add_argument("--gtdefault", "-gtd", action="store_true", help="what to take as default response for missed request")
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
+    
     # get the arguments
     args = arg_parser.parse_args()
 
@@ -86,7 +88,7 @@ if __name__ == "__main__":
     void_image = np.zeros(shape=test_data[0][0].shape, dtype=np.float32)#np.random.normal(size=test_data[0][0].shape)#  np.random.normal(size=test_data[0][0].shape)
     # test loader to prefill data for later error calculation
     testloader = torch.utils.data.DataLoader(
-        test_data,
+        torch.utils.data.Subset(test_data, list(range(0, len(test_data)//args.interval_count))),
         batch_size=1, shuffle=True)
     testloader_iter = iter(testloader)
     for interval_count in range(args.interval_count):
@@ -98,8 +100,12 @@ if __name__ == "__main__":
                 batch = next(testloader_iter)
             except StopIteration:
                 testloader = torch.utils.data.DataLoader(
-                    test_data,
+                    torch.utils.data.Subset(
+                        test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                             (interval_count + 1)* len(test_data)//args.interval_count))),
                     batch_size=1, shuffle=True)
+                testloader_iter = iter(testloader)
+                batch = next(testloader_iter)
 
             # if args.gtdefault ground truth is default response
             # needed to evaluate just the training quality
@@ -124,10 +130,14 @@ if __name__ == "__main__":
 
         teststream = ptychonn.datastream.DataStream(
             datarate=args.datarate,
-            deadline_sec=args.deadline/1000, dataset=test_data)
+            deadline_sec=args.deadline/1000, dataset=torch.utils.data.Subset(
+                            test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                                                  (interval_count + 1)* len(test_data)//args.interval_count))))
         interval_start_time = time.time()
         # to signal that continuous data stream should start
         logger.log("MULTICONTEXT INFER DATASTREAM START")
+        # mark of interval start
+        logger.log("INTERVAL START {0}".format(interval_count + 1))
         teststream.start_stream()
 
         # following construct is to wait for 1th interval to start without causing CPU consumption
@@ -163,6 +173,9 @@ if __name__ == "__main__":
             performance_metrics["miss rate stat datastreamer"].append(teststream.get_perf()[2] / teststream.get_perf()[0])
         except ZeroDivisionError:
             performance_metrics["miss rate stat datastreamer"].append(1)
+        
+        # mark of interval start
+        logger.log("INTERVAL END {0}".format(interval_count + 1))
         print("Interval {0} took {1}s".format(interval_count, time.time() - interval_start_time))
 
 

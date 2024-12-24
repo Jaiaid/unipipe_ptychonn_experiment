@@ -33,11 +33,11 @@ if __name__ == "__main__":
     # for reproducability
     # https://discuss.pytorch.org/t/training-reproducibility-problem/37143/3
     # https://vandurajan91.medium.com/random-seeds-and-reproducible-results-in-pytorch-211620301eba
-    random.seed(2661)
-    torch.manual_seed(2661)
-    torch.cuda.manual_seed(2661)
-    torch.cuda.manual_seed_all(2661)
-    np.random.seed(2661)
+    random.seed(ptychonn.parameters.SEED)
+    torch.manual_seed(ptychonn.parameters.SEED)
+    torch.cuda.manual_seed(ptychonn.parameters.SEED)
+    torch.cuda.manual_seed_all(ptychonn.parameters.SEED)
+    np.random.seed(ptychonn.parameters.SEED)
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
     # torch.use_deterministic_algorithms(True)
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     void_image = np.zeros(shape=test_data[0][0].shape, dtype=np.float32)#np.random.normal(size=test_data[0][0].shape)#  np.random.normal(size=test_data[0][0].shape)
     # test loader to prefill data for later error calculation
     testloader = torch.utils.data.DataLoader(
-        test_data,
+        torch.utils.data.Subset(test_data, list(range(0, len(test_data)//args.interval_count))),
         batch_size=1, shuffle=True)
     testloader_iter = iter(testloader)
     for interval_count in range(args.interval_count):
@@ -115,8 +115,12 @@ if __name__ == "__main__":
                 batch = next(testloader_iter)
             except StopIteration:
                 testloader = torch.utils.data.DataLoader(
-                    test_data,
+                    torch.utils.data.Subset(
+                        test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                             (interval_count + 1)* len(test_data)//args.interval_count))),
                     batch_size=1, shuffle=True)
+                testloader_iter = iter(testloader)
+                batch = next(testloader_iter)
 
             # if args.gtdefault ground truth is default response
             # needed to evaluate just the training quality
@@ -130,7 +134,6 @@ if __name__ == "__main__":
 
             result_list[-1][2].append(copy.deepcopy(batch[1].numpy()[0]))
             result_list[-1][3].append(copy.deepcopy(batch[2].numpy()[0]))
-            # print(result_list[-1][2][-1].shape)
 
     # init the model
     model = ptychonn.model.recon_model()
@@ -148,7 +151,9 @@ if __name__ == "__main__":
         # custom continuous data producer stream
         teststream = ptychonn.datastream.DataStream(
             datarate=args.datarate,
-            deadline_sec=args.deadline/1000, dataset=test_data)
+            deadline_sec=args.deadline/1000, dataset=torch.utils.data.Subset(
+            test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                             (interval_count + 1)* len(test_data)//args.interval_count))))
 
         # mark of interval start
         logger.log("INTERVAL START {0}".format(interval_count + 1))
@@ -184,14 +189,16 @@ if __name__ == "__main__":
 
             # test loader for test function
             testloader = torch.utils.data.DataLoader(
-                test_data,
+                torch.utils.data.Subset(
+                    test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                             (interval_count + 1)* len(test_data)//args.interval_count))),
                 batch_size=ptychonn.parameters.INFERENCE_BATCH_SIZE, shuffle=False, num_workers=1)
 
             start_time = time.time()
             test_metrics.append(ptychonn.process_funcs.test(model=model, testloader=testloader))
             performance_metrics["inference time"].append(time.time() - start_time)
             continue
-        
+
         # incremental unipipe training
         # so all inference can be served, we can think that the test will run completely
         start_time = time.time()
@@ -279,13 +286,17 @@ if __name__ == "__main__":
     if args.allckpttest:
         model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"))
         model.to("cuda")
-        testloader = torch.utils.data.DataLoader(
-            test_data,
-            batch_size=ptychonn.parameters.INFERENCE_BATCH_SIZE,
-            shuffle=False, num_workers=1)
+        # pretrained model evaluation at different interval
+        for interval_count in range(args.interval_count):
+            testloader = torch.utils.data.DataLoader(
+                torch.utils.data.Subset(
+                            test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                                                  (interval_count + 1)* len(test_data)//args.interval_count))),
+                batch_size=ptychonn.parameters.INFERENCE_BATCH_SIZE,
+                shuffle=False, num_workers=1)
 
-        loss_total, loss_amp, loss_ph = ptychonn.process_funcs.testloss(model=model, testloader=testloader)
-        logger.log("ALL CKPT TESTDATA INTERVAL, EPOCH, LOSS", 0, 0, loss_total, loss_amp, loss_ph)
+            loss_total, loss_amp, loss_ph = ptychonn.process_funcs.testloss(model=model, testloader=testloader)
+            logger.log("ALL CKPT TESTDATA INTERVAL, EPOCH, LOSS", 0, 0, loss_total, loss_amp, loss_ph)
 
         for interval_count in range(1, args.interval_count):
             for epoch_count in range(ptychonn.parameters.EPOCHS):
@@ -293,7 +304,9 @@ if __name__ == "__main__":
                     model = torch.load(os.path.join("/dev/shm", "inctrained_interval{0}_model_e{1}.pth".format(interval_count, epoch_count)))
                     model.to("cuda")
                     testloader = torch.utils.data.DataLoader(
-                        test_data,
+                        torch.utils.data.Subset(
+                            test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                                                  (interval_count + 1)* len(test_data)//args.interval_count))),
                         batch_size=ptychonn.parameters.INFERENCE_BATCH_SIZE,
                         shuffle=False, num_workers=1)
 
@@ -302,5 +315,6 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(e)
                     break
+
 
     logger.persist(args.csvlog_file[:-4] + ".log")

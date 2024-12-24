@@ -36,10 +36,10 @@ if __name__ == "__main__":
     # for reproducability
     # https://discuss.pytorch.org/t/training-reproducibility-problem/37143/3
     # https://vandurajan91.medium.com/random-seeds-and-reproducible-results-in-pytorch-211620301eba
-    random.seed(1)
-    torch.manual_seed(1)
-    torch.cuda.manual_seed(1)
-    torch.cuda.manual_seed_all(1)
+    random.seed(ptychonn.parameters.SEED)
+    torch.manual_seed(ptychonn.parameters.SEED)
+    torch.cuda.manual_seed(ptychonn.parameters.SEED)
+    torch.cuda.manual_seed_all(ptychonn.parameters.SEED)
     np.random.seed(1)
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False

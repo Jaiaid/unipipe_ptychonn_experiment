@@ -31,10 +31,10 @@ import logfast
 
 if __name__ == "__main__":
     # for reproducability
-    random.seed(2661)
-    torch.manual_seed(2661)
-    torch.cuda.manual_seed(2661)
-    np.random.seed(2661)
+    random.seed(ptychonn.parameters.SEED)
+    torch.manual_seed(ptychonn.parameters.SEED)
+    torch.cuda.manual_seed(ptychonn.parameters.SEED)
+    np.random.seed(ptychonn.parameters.SEED)
     torch.backends.cudnn.deterministic = True
 
     # define arguments
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     void_image = np.zeros(shape=test_data[0][0].shape, dtype=np.float32)#np.random.normal(size=test_data[0][0].shape)#  np.random.normal(size=test_data[0][0].shape)
     # test loader to prefill data for later error calculation
     testloader = torch.utils.data.DataLoader(
-        test_data,
+        torch.utils.data.Subset(test_data, list(range(0, len(test_data)//args.interval_count))),
         batch_size=1, shuffle=True)
     testloader_iter = iter(testloader)
     for interval_count in range(args.interval_count):
@@ -105,8 +105,12 @@ if __name__ == "__main__":
                 batch = next(testloader_iter)
             except StopIteration:
                 testloader = torch.utils.data.DataLoader(
-                    test_data,
+                    torch.utils.data.Subset(
+                        test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                             (interval_count + 1)* len(test_data)//args.interval_count))),
                     batch_size=1, shuffle=True)
+                testloader_iter = iter(testloader)
+                batch = next(testloader_iter)
 
             # if args.gtdefault ground truth is default response
             # needed to evaluate just the training quality
@@ -120,7 +124,6 @@ if __name__ == "__main__":
 
             result_list[-1][2].append(copy.deepcopy(batch[1].numpy()[0]))
             result_list[-1][3].append(copy.deepcopy(batch[2].numpy()[0]))
-            # print(result_list[-1][2][-1].shape)
 
     # init the model
     model = ptychonn.model.recon_model()
@@ -143,7 +146,9 @@ if __name__ == "__main__":
             #same for test
             #download and load training data
             testloader = torch.utils.data.DataLoader(
-                test_data,
+                torch.utils.data.Subset(
+                            test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                                                  (interval_count + 1)* len(test_data)//args.interval_count))),
                 batch_size=ptychonn.parameters.INFERENCE_BATCH_SIZE, shuffle=False, num_workers=1)
 
             validloader = torch.utils.data.DataLoader(
@@ -169,7 +174,9 @@ if __name__ == "__main__":
         # custom continuous data producer stream
         teststream = ptychonn.datastream.DataStream(
             datarate=args.datarate,
-            deadline_sec=args.deadline/1000, dataset=test_data)
+            deadline_sec=args.deadline/1000, dataset=torch.utils.data.Subset(
+                            test_data, list(range(interval_count * len(test_data)//args.interval_count,
+                                                  (interval_count + 1)* len(test_data)//args.interval_count))),)
 
         # mark of interval start
         logger.log("INTERVAL START {0}".format(interval_count + 1))
