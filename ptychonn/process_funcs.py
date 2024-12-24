@@ -49,7 +49,7 @@ def train(model, trainloader, epoch, bs, chkpt_path, device="cuda", lr=1e-3,
             ft_images = batch[0].to(device) #Move everything to device
             amps = batch[1].to(device)
             phs = batch[2].to(device)
-
+            logger.log("TRAINING BATCH SIZE", ft_images.shape[0])
             pred_amps, pred_phs = model(ft_images) #Forward pass
 
             #Compute losses
@@ -154,6 +154,7 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
     metrics = {"lrs": [], "losses": [], "val_losses": [], "best_val_loss": math.inf}
     # for training batch size control
     train_dataset_size = len(trainloader.dataset)
+    print(train_dataset_size)
     
     # here we will determine the batch size for training and inference from following parameters
     #
@@ -161,12 +162,13 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
     # 2. Data rate
     # 3. forward pass time per data sample
     # 4. backward pass time per data sample
-    ideal_infer_bs = round(teststream.get_deadlinesec() * teststream.get_datarate() / 2)
+    ideal_infer_bs = math.ceil(teststream.get_deadlinesec() * teststream.get_datarate() / 2)
     logger.log("INFER BATCH SIZE IDEAL", ideal_infer_bs)
     if ideal_infer_bs == 0:
         ideal_infer_bs = 1
 
     ideal_train_batchsize = bs
+    negative_train_batchsize_count = 0
     missed_infer = 0
 
     # for loss measure and some stats
@@ -197,6 +199,7 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
         loss_amp = 0.0
         loss_ph = 0.0
         total_train_iter_count = 0
+        total_iter_count = 0
 
         # to get iteration time
         iteration_time = 0
@@ -216,30 +219,13 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
             infer_count = 0
 
             try:
-                infer_batch, inferbatch_deadline_list, missed_infer_at_datastream = teststream.extract(bs=ideal_infer_bs)
+                infer_batch, inferbatch_deadline_list, missed_infer_at_datastream=\
+                    teststream.extract(bs=ideal_infer_bs, logger=logger)
                 infer_count = infer_batch[0].shape[0]
                 inference_iter_count += 1
-
-                # if missed_infer_at_datastream > missed_infer:
-                    # missed_infer = missed_infer_at_datastream
-                    # print(
-                    #     "Ideal train batchsize from {0} to {1}".format(
-                    #         ideal_train_batchsize, max(int(ideal_train_batchsize/2), 4)
-                    #     )
-                    # )
-                    # ideal_train_batchsize = max(int(ideal_train_batchsize/2), 1)
-                # else:
-                    # missed_infer = missed_infer_at_datastream
-                    # print(
-                    #     "Ideal train batchsize from {0} to {1}".format(
-                    #         ideal_train_batchsize, min(int(ideal_train_batchsize * 1.5), trainloader.batch_size)
-                    #     )
-                    # )
-                    # ideal_train_batchsize = min(int(ideal_train_batchsize * 1.5), trainloader.batch_size)
             except StopIteration:
                 pass
 
-            total_served += infer_count
             #print(total_served, infer_count, time.time() - start_time)
             total_streamed += infer_count + missed_infer_at_datastream
 
@@ -259,14 +245,12 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
                 ft_images = train_batch[0].to(device)
 
             logger.log("UNIPIPE TRAIN, INFER BS", ideal_train_batchsize, infer_count)
-            logger.log("UNIPIPE MISSED INFER DATASTREAM", missed_infer)
+            logger.log("UNIPIPE MISSED INFER DATASTREAM", missed_infer_at_datastream)
             # to keep track how many infer request missed due to forward pass latency
             forward_pass_arrival_time = time.time()
             pred_amps, pred_phs = model(ft_images) #Forward pass
             forward_pass_done_time = time.time()
 
-            # for ideal train batch size calculation
-            time_uf = (forward_pass_done_time -  forward_pass_arrival_time)/ft_images.shape[0]
             # print(result_fiilup_list[3][total_served + j].shape)
             
             # before proceeding to backward pass release the inference results
@@ -284,9 +268,14 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
                     result_fiilup_list[1][total_served + j] = pred_phs[j].detach().to("cpu").numpy()
                     result_fiilup_list[2][total_served + j] = true_amp[j].detach().to("cpu").numpy()
                     result_fiilup_list[3][total_served + j] = true_ph[j].detach().to("cpu").numpy()
+                total_served += infer_count
             # update total missed count
+            logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - iteration_start_time)
             logger.log("UNIPIPE MISSED INFER FORWARD LATENCY", forward_pass_related_infer_miss)
             total_missed -= infer_count - forward_pass_related_infer_miss
+
+            # for ideal train batch size calculation
+            time_uf = (forward_pass_done_time -  forward_pass_arrival_time)/ft_images.shape[0]
 
             if not stop_train:
                 gt_amps = train_batch[1].to(device)
@@ -316,30 +305,51 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
                 # calculate batch size according to performance model if not constant batch size experiment
                 prev_ideal_train_bs = ideal_train_batchsize
                 if not constant_bs:
-                    ideal_train_batchsize = round(
-                        teststream.get_deadlinesec() * (1-teststream.get_datarate()*time_uf) /\
-                        (2 * (time_uf + time_ub))
+                    # ideal_train_batchsize = round(
+                    #     teststream.get_deadlinesec() * (1-teststream.get_datarate()*time_uf) /\
+                    #     (2 * (time_uf + time_ub))
+                    # )
+                    ideal_train_batchsize = math.floor(
+                        ideal_infer_bs * (1-teststream.get_datarate()*time_uf) /\
+                        (2 * (time_uf + time_ub) * teststream.get_datarate())
                     )
 
                 if ideal_train_batchsize != prev_ideal_train_bs:
-                    logger.log("TRAINBATCH SIZE FROM", prev_ideal_train_bs, ideal_train_batchsize)
+                    logger.log("TRAINBATCH SIZE FROM", prev_ideal_train_bs, ideal_train_batchsize,
+                               time_ub, time_uf, ideal_infer_bs/teststream.get_datarate(),
+                               ideal_infer_bs * time_uf + ideal_train_batchsize * (time_uf + time_ub))
                 if ideal_train_batchsize <= 0:
-                    logger.log("TRAINBATCH SIZE TO <=0", teststream.get_deadlinesec(), 1-teststream.get_datarate()*time_uf, time_uf, time_ub)
+                    logger.log("TRAINBATCH SIZE TO <=0", teststream.get_deadlinesec(), 1-teststream.get_datarate()*time_uf, time_uf, time_ub, teststream.get_datarate())
+                    # if the configuration does not allow training and inference, 
+                    # we will prioritize training 
                     ideal_train_batchsize = 1
+                    negative_train_batchsize_count += 1
+                    logger.log("TRAINBATCH SIZE TO <=0 FOR TIMES", negative_train_batchsize_count)
+                    if negative_train_batchsize_count > 15:
+                        logger.log("TRAINBATCH SIZE TO <=0 ABOVE THRESHOLD, PRIORITIZE TRAINING", negative_train_batchsize_count)
+                        ideal_train_batchsize = parameters.TRAIN_BATCH_SIZE
+                        negative_train_batchsize = True
+                        # ideal_infer_bs = None
+                        constant_bs = True
+                else:
+                    negative_train_batchsize_count = 0
                 total_train_iter_count += 1
 
             total_iter_count += 1
-            iteration_time += time.time() - iteration_start_time
+            iter_end_timestamp = time.time()
+            logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
+            logger.log("ITERATION TAKES(sec.)", iter_end_timestamp - iteration_start_time)
+            iteration_time += iter_end_timestamp - iteration_start_time
 
             if traindata_start_idx >= len(trainloader.dataset):
                 logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1)
-                stop_train = True
                 break
 
-        update_saved_model(model=model, path="/dev/shm/", name="{0}_e{1}.pth".format(chkpt_path[:-4], cur_epoch))
-        #Divide cumulative loss by number of batches-- sli inaccurate because last batch is different size
-        metrics['losses'].append([tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1)])
-        logger.log("TRAINING LOSS AT EPOCH", cur_epoch, tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1))
+        if not stop_train:
+            update_saved_model(model=model, path="/dev/shm/", name="{0}_e{1}.pth".format(chkpt_path[:-4], cur_epoch))
+            #Divide cumulative loss by number of batches-- sli inaccurate because last batch is different size
+            metrics['losses'].append([tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1)])
+            logger.log("TRAINING LOSS AT EPOCH", cur_epoch, tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1))
         
         # update flag to stop training if training brings out minimal improvement
         # this condition needed because it is possible in current epoch not a single training is run
@@ -356,6 +366,11 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
         if cur_epoch + 1 == parameters.EPOCHS:
             stop_train = True
             logger.log("MAX EPOCH DONE, NO TRAINING IN CURRENT INTERVAL")
+
+        # if train stopped switch to ideal infer  bs
+        if stop_train:
+            ideal_infer_bs = math.ceil(teststream.get_deadlinesec() * teststream.get_datarate() / 2)
+            logger.log("TRAIN DONE, SWITCHING TO PERF. MODEL INFER BS.", ideal_infer_bs)
 
     logger.log("UNIPIPE TRAINING TAKES", time.time() - train_start_time)
     logger.log("UNIPIPE TOTAL TIME:", time.time() - start_time)
@@ -515,8 +530,9 @@ def time_limit_test(model, testloader, time_limit, device="cuda"):
 
 # process test dataset and return results
 def test_time_constrained(model, teststream, result_fiilup_list, time_limit, device="cuda",
-                          next_model="0", chkpt_dir=None, logger:fastlogger.FastLogger=None):
+                          next_model="0", chkpt_dir=None, logger:fastlogger.FastLogger=None, bs=None):
     # for time limit testing
+    total_streamed = 0
     total_served = 0
     total_missed = len(result_fiilup_list[0])
     start_time = time.time()
@@ -527,7 +543,8 @@ def test_time_constrained(model, teststream, result_fiilup_list, time_limit, dev
     model.to(device)
     
     while time.time() - start_time < time_limit:
-        batch, inferbatch_deadline_list, missed = teststream.extract()
+        batch, inferbatch_deadline_list, missed = teststream.extract(bs=bs)
+
         ft_images =  batch[0].to(device)
         true_amp = batch[1]
         true_ph = batch[2]
@@ -535,6 +552,8 @@ def test_time_constrained(model, teststream, result_fiilup_list, time_limit, dev
         # print("infernece model is serving")
         logger.log("INFERENCE BATCH SIZE", ft_images.shape[0])
         logger.log("MISSED INFER DATASTREAM", missed)
+        total_streamed += ft_images.shape[0] + missed
+
         amp, ph = model(ft_images)
         # to keep track how much missed due to forward pass latency
         forward_pass_done_time = time.time()
@@ -550,9 +569,10 @@ def test_time_constrained(model, teststream, result_fiilup_list, time_limit, dev
             result_fiilup_list[1][total_served + j] = ph[j].detach().to("cpu").numpy()
             result_fiilup_list[2][total_served + j] = true_amp[j].detach().to("cpu").numpy()
             result_fiilup_list[3][total_served + j] = true_ph[j].detach().to("cpu").numpy()
-        total_served += ft_images.shape[0]
+
+        total_served += ft_images.shape[0] - forward_pass_related_infer_miss
         logger.log("MISSED INFER FORWARD LATENCY", forward_pass_related_infer_miss)
-        total_missed -= ft_images.shape[0] - forward_pass_related_infer_miss
+        total_missed -= ft_images.shape[0] - forward_pass_related_infer_miss + missed
     
         # check after each serve that if model is updated
         model_load_time = time.time()
@@ -564,7 +584,7 @@ def test_time_constrained(model, teststream, result_fiilup_list, time_limit, dev
             next_model_loaded = True
             print("total served with prev: ", total_served, " total remaninig:", total_missed)
         # print(time.time() - model_load_time)
-
+    logger.log("TOTAL STREAMED", total_streamed)
     # bring back model to training
     return total_served, total_missed
 
