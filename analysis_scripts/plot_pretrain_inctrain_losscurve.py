@@ -4,6 +4,7 @@ import matplotlib.pyplot as plot
 import argparse
 import re
 
+COMPARED_SYSTEMS_LEGEND_DICT = {"pretrained": "Pretrained", "worst_case": "Worst Case", "multicontext": "Multicontext", "unipipe": "Unipipe"}
 PRETRAIN_EPOCH = 10
 TRAINLOSS_REGEX = r"\[(\d+\.\d+)\]\s+TRAINING LOSS AT EPOCH,(\d+),([\d\.]+),([\d\.]+),([\d\.]+)"
 INTERVAL_START_REGEX = r"\[(\d+\.\d+)\]\s+INTERVAL START (\d+)"

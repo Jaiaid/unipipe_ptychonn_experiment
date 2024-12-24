@@ -4,7 +4,8 @@ import matplotlib.pyplot as plot
 import traceback
 import argparse
 
-COMPARED_SYSTEMS = ["pretrained", "unipipe", "multicontext", "worst_case"]
+import plotprop
+
 SYSTEM_TO_COLORMARKER_DICT = {"pretrained": ("c", "*"), "worst_case": ("r", "+"), "multicontext": ("g", "o"), "unipipe": ("b", "x")}
 
 # INTERVAL_TIMELIST = [4, 5]
@@ -23,7 +24,7 @@ if __name__ == "__main__":
     fig1, ax1 = plot.subplots(figsize=(20, 5))
     fig2, ax2 = plot.subplots(figsize=(20, 5))
 
-    for system_idx, system in enumerate(COMPARED_SYSTEMS):
+    for system_idx, system in enumerate(plotprop.COMPARED_SYSTEMS):
         data_dict[system] = {}
         data_dirpath = os.path.join(args.dir, system)
         if not os.path.exists(data_dirpath):
@@ -36,17 +37,26 @@ if __name__ == "__main__":
 
 
         for filename in os.listdir(data_dirpath):
-            if filename[-4:] != ".csv":
+            if filename[-4:] != ".csv" or "sysstat" in filename:
                 continue
 
             tokens = filename.split(".")
             tokens = tokens[0].split("_")
 
-            # 
-            interval_count = int(tokens[-4])
-            interval_duration = int(tokens[-3])
-            datarate = int(tokens[-2])
-            deadline_msec = (1000/datarate) * int(tokens[-1])
+            if system == "multicontext":
+                interval_count = int(tokens[-4])
+                interval_duration = int(tokens[-3])
+                datarate = int(tokens[-2])
+                deadline_msec = int(tokens[-1])
+            else:
+                interval_count = int(tokens[-4])
+                interval_duration = int(tokens[-3])
+                datarate = int(tokens[-2])
+                deadline_msec = int(tokens[-1])
+            if deadline_msec not in [5 , 10]:
+                continue
+
+            print(filename,tokens)
 
             if interval_duration not in data_dict[system]:
                 data_dict[system][interval_duration] = {}
@@ -93,7 +103,7 @@ if __name__ == "__main__":
             deadline_list = sorted(list(data_dict["unipipe"][interval_duration][datarate].keys()))
 
             for deadline in deadline_list:
-                for sysidx, system in enumerate(COMPARED_SYSTEMS):
+                for sysidx, system in enumerate(plotprop.COMPARED_SYSTEMS):
                     try:
                         handle_dict1[system] = ax1.bar(
                             [variant_idx*2 - sysidx * 0.25],
@@ -121,12 +131,14 @@ if __name__ == "__main__":
     ax1.set_xlabel("")
     ax1.set_xticks(xticks)
     ax1.set_xticklabels(xticklabels, size=9, rotation=90)
-    ax1.legend(handles=[handle_dict1[system] for system in evaluated_systems], labels=COMPARED_SYSTEMS)
-    fig1.savefig("meanamp_error_vs_datarate_and_deadline.png", bbox_inches='tight')
+    ax1.legend(handles=[handle_dict1[system] for system in evaluated_systems],
+               labels=[plotprop.COMPARED_SYSTEMS_LEGEND_DICT[system] for system in evaluated_systems])
+    fig1.savefig("meanamp_error_vs_datarate_and_deadline.pdf", format="pdf", bbox_inches='tight')
 
     ax2.set_ylabel("Mean Phase MSE")
     ax2.set_xlabel("")
     ax2.set_xticks(xticks)
     ax2.set_xticklabels(xticklabels, size=9, rotation=90)
-    ax2.legend(handles=[handle_dict2[system] for system in evaluated_systems], labels=COMPARED_SYSTEMS)
-    fig2.savefig("meanph_error_vs_datarate_and_deadline.png", bbox_inches='tight')
+    ax2.legend(handles=[handle_dict2[system] for system in evaluated_systems],
+               labels=[plotprop.COMPARED_SYSTEMS_LEGEND_DICT[system] for system in evaluated_systems])
+    fig2.savefig("meanph_error_vs_datarate_and_deadline.pdf", format="pdf", bbox_inches='tight')

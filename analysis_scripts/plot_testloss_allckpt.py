@@ -105,16 +105,17 @@ if __name__ == "__main__":
     ax1.set_ylabel("Loss")
     ax1.set_xlabel("Time (s)")
     ax1.plot(timelist, loss_val, marker='x', label="total train loss")
-    ax1.plot(timelist, testloss_val[1:], marker='o', label="total test loss")
+    ax1.plot(timelist, testloss_val[interval_count:], marker='o', label="total test loss")
     for i, t in enumerate(interval_start_timelist):
         if i == 0:
             ax1.axvline(t, label='interval boundary')
         else:
             ax1.axvline(t, label="_nolegend_")
     
-    ax1.plot([0], testloss_val[0:1], marker='*', markersize=15, label="pretrain test loss")
+    ax1.plot(interval_start_timelist, testloss_val[:interval_count], marker='*', markersize=15, label="pretrain test loss")
     # ax1.set_xticks(xticks)
     # ax1.set_xticklabels(xticklabels, size=9, rotation=90)
     ax1.legend(["total train loss", "total test loss", "interval boundary", "pretrain test loss"])
     # ax1.set_ylim([0, 10])
-    fig1.savefig("figure_testloss_aftertest_curve_{0}_{1}_{2}_{3}.png".format(system, interval_duration, datarate, deadline_msec), bbox_inches='tight')
+    fig1.savefig("figure_testloss_aftertest_curve_{0}_{1}_{2}_{3}.pdf".format(system, interval_duration, datarate, deadline_msec),
+                 format="pdf", bbox_inches='tight')
