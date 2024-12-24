@@ -1,8 +1,10 @@
 *.png
+*.pdf
 *.csv
 *.log
 *.pth
 *.tar.gz
 *.txt
+*.runlog
 */__pycache__/*
 *.tsv
