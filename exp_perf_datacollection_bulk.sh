@@ -48,10 +48,11 @@ for c in 5;do
             for accumulationallow in 5 10;
             do    
                 bash unipipe_run.sh $c $dur $rate $accumulationallow
+
                 # move generated files for later analysis
                 mv tmp.csv ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${accumulationallow}.csv
                 mv tmp.log ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${accumulationallow}.log
-                mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${dur}_${rate}_${accumulationallow}.csv 
+                mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${dur}_${rate}_${accumulationallow}.csv
             done
             rate=$(($rate*2))
         done
