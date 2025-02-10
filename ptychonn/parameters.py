@@ -1,21 +1,25 @@
 import os
 
-SEED = 2661
+SEED = 0
+
+# Iterative Phase Retrieval Throughput
+IPR_THROUGHPUT = 16
 
 H,W = 64,64
 IMGCOUNT = 161 # How many image
 DIFFRLINE = 161 # How many lines per image
 NLINES = 5 #How many lines of data to use for training?
 NLTEST = 60 #How many lines for the test set?
-
+VALID_PERCENTAGE = 5
+TEST_PERCENTAGE = 60 
 
 N_VALID = 805 #How much to reserve for validation
 
 PRETRAIN_EPOCHS = 10
 NGPUS = 1
-TRAIN_BATCH_SIZE = NGPUS * 32
+TRAIN_BATCH_SIZE = NGPUS * 64
 # is 1 because we are considering continuous data stream
-INFERENCE_BATCH_SIZE = 32
+INFERENCE_BATCH_SIZE = 64
 LR = NGPUS * 1e-3
 
 # this threshold helps determine when to stop training
@@ -27,7 +31,7 @@ LOSS_CHANGE_MIN_THRESHOLD = 1e-3
 # # request deadline
 # DEADLINE_PER_REQ_SEC = 0.02
 
-EPOCHS = 10
+EPOCHS = 1000
 
 ROOT_DIR = "../../"
 DATA_DIFFR_PATH = os.path.join(ROOT_DIR, 'data/20191008_39_diff.npz')

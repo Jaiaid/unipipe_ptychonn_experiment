@@ -162,7 +162,7 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
     # 2. Data rate
     # 3. forward pass time per data sample
     # 4. backward pass time per data sample
-    ideal_infer_bs = math.ceil(teststream.get_deadlinesec() * teststream.get_datarate() / 2)
+    ideal_infer_bs = math.ceil((1 + teststream.get_deadlinesec() * teststream.get_datarate()) / 2)
     logger.log("INFER BATCH SIZE IDEAL", ideal_infer_bs)
     if ideal_infer_bs == 0:
         ideal_infer_bs = 1
@@ -188,7 +188,9 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
     train_start_time = time.time()
     # to control when the training of current interval will stop
     previous_loss = 0
-    stop_train = False
+    # training does not start on start of interval
+    # we wait until half of interval (an emulation of delay in generating new training data)
+    stop_train = True
 
     # arbitrary large epoch, for coding ease in tracking an epoch
     # actual breaking condition is on time limit and loss
@@ -206,6 +208,13 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
         if time_limit is not None and time.time() - start_time > time_limit:
             logger.log("UNIPIPE EPOCH END TIMELIMIT OVER", cur_epoch + 1)
             break
+        # we assume in an interval the training will start after half of interval
+        # this half will be used to prepare the training data (generate ground truth)
+        print(time.time() - start_time, time_limit/2)
+        if stop_train and time.time() - start_time > time_limit/2:
+            logger.log("HALF INTERVAL OVER TRAIN WILL RESUME")
+            stop_train = False
+
         print("Epoch count:", cur_epoch)
 
         traindata_start_idx = 0
@@ -309,10 +318,11 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
                     #     teststream.get_deadlinesec() * (1-teststream.get_datarate()*time_uf) /\
                     #     (2 * (time_uf + time_ub))
                     # )
-                    ideal_train_batchsize = math.floor(
+                    
+                    ideal_train_batchsize = min(math.floor(
                         ideal_infer_bs * (1-teststream.get_datarate()*time_uf) /\
-                        (2 * (time_uf + time_ub) * teststream.get_datarate())
-                    )
+                        2 * (time_uf + time_ub) * teststream.get_datarate()
+                    ), parameters.TRAIN_BATCH_SIZE)
 
                 if ideal_train_batchsize != prev_ideal_train_bs:
                     logger.log("TRAINBATCH SIZE FROM", prev_ideal_train_bs, ideal_train_batchsize,
@@ -335,15 +345,20 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
                     negative_train_batchsize_count = 0
                 total_train_iter_count += 1
 
+                logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
+
             total_iter_count += 1
             iter_end_timestamp = time.time()
-            logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
             logger.log("ITERATION TAKES(sec.)", iter_end_timestamp - iteration_start_time)
             iteration_time += iter_end_timestamp - iteration_start_time
 
             if traindata_start_idx >= len(trainloader.dataset):
                 logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1)
                 break
+
+            if stop_train and time.time() - start_time > time_limit/2:
+                logger.log("HALF INTERVAL OVER TRAIN WILL RESUME")
+                stop_train = False
 
         if not stop_train:
             update_saved_model(model=model, path="/dev/shm/", name="{0}_e{1}.pth".format(chkpt_path[:-4], cur_epoch))
@@ -369,7 +384,7 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
 
         # if train stopped switch to ideal infer  bs
         if stop_train:
-            ideal_infer_bs = math.ceil(teststream.get_deadlinesec() * teststream.get_datarate() / 2)
+            ideal_infer_bs = math.ceil((1 + teststream.get_deadlinesec() * teststream.get_datarate()) / 2)
             logger.log("TRAIN DONE, SWITCHING TO PERF. MODEL INFER BS.", ideal_infer_bs)
 
     logger.log("UNIPIPE TRAINING TAKES", time.time() - train_start_time)

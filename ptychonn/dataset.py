@@ -10,7 +10,7 @@ from torch.utils.data import TensorDataset, DataLoader
 
 from . import parameters
 
-def get_dataset(nlines, nvalid_percentage, ntest_percentage):
+def get_dataset(nvalid_percentage, ntest_percentage):
     diffr_data = np.load(parameters.DATA_DIFFR_PATH)["arr_0"]
 
     diffr_data_red = np.zeros((diffr_data.shape[0],diffr_data.shape[1],64,64), float)

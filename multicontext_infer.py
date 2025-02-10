@@ -33,10 +33,10 @@ INC_TRAIN_INTERVAL = 5
 
 if __name__ == "__main__":
     # for reproducability
-    random.seed(2661)
-    torch.manual_seed(2661)
-    torch.cuda.manual_seed(2661)
-    np.random.seed(2661)
+    random.seed(ptychonn.parameters.SEED)
+    torch.manual_seed(ptychonn.parameters.SEED)
+    torch.cuda.manual_seed(ptychonn.parameters.SEED)
+    np.random.seed(ptychonn.parameters.SEED)
     # print the metadata of the experiments from parameters module
     for attr in ptychonn.parameters.__dict__:
         if type(attr) in [str, int, float] and not attr.startswith("__"):
@@ -58,7 +58,9 @@ if __name__ == "__main__":
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
 
-    dataset_dict = ptychonn.dataset.get_dataset(nlines=161, nvalid_percentage=20, ntest_percentage=10)
+    dataset_dict = ptychonn.dataset.get_dataset(
+        nvalid_percentage=ptychonn.parameters.VALID_PERCENTAGE,
+        ntest_percentage=ptychonn.parameters.TEST_PERCENTAGE)
 
     test_data = dataset_dict["test"]
 
@@ -144,7 +146,7 @@ if __name__ == "__main__":
         # first wait until 1th interval start then continue to next iteration
         # only 1st iteration will cause the loop to loop
         while not os.path.exists(os.path.join("/dev/shm", "unipipe_exp_1th_interval_start")):
-            time.sleep((time.time() - interval_start_time) / 2)
+            time.sleep((args.interval_duration - (time.time() - interval_start_time)) / 2)
         logger.log("MULTICONTEXT INFER LOADABLE MODEL READY")
         if interval_count == 0:
             continue

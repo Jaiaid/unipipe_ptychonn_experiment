@@ -63,7 +63,9 @@ if __name__ == "__main__":
         if type(attr) in [str, int, float] and not attr.startswith("__"):
             print(attr, "=", ptychonn.parameters.__dict__[attr])
 
-    dataset_dict = ptychonn.dataset.get_dataset(nlines=161, nvalid_percentage=20, ntest_percentage=10)
+    dataset_dict = ptychonn.dataset.get_dataset(
+        nvalid_percentage=ptychonn.parameters.VALID_PERCENTAGE,
+        ntest_percentage=ptychonn.parameters.TEST_PERCENTAGE)
 
     train_data = dataset_dict["train"]
     valid_data = dataset_dict["valid"]

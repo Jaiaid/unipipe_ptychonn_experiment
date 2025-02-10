@@ -56,7 +56,9 @@ if __name__ == "__main__":
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
 
-    dataset_dict = ptychonn.dataset.get_dataset(nlines=161, nvalid_percentage=20, ntest_percentage=10)
+    dataset_dict = ptychonn.dataset.get_dataset(
+        nvalid_percentage=ptychonn.parameters.VALID_PERCENTAGE,
+        ntest_percentage=ptychonn.parameters.TEST_PERCENTAGE)
 
     train_data = dataset_dict["train"]
     valid_data = dataset_dict["valid"]
@@ -135,9 +137,13 @@ if __name__ == "__main__":
         # incremental training
         # so all inference can be served, we can think that the test will run completely
         start_time = time.time()
+        # we assume in an interval the training will start after half of interval
+        # this half will be used to prepare the training data (generate ground truth)
+        time.sleep(args.interval_duration/2)
+
         train_metrics = ptychonn.process_funcs.train(
             model=model_train, trainloader=trainloader, chkpt_path="model_multicontext/inctrained_interaval{0}_model.pth".format(interval_count),
-            epoch=ptychonn.parameters.EPOCHS, bs=ptychonn.parameters.TRAIN_BATCH_SIZE, time_limit=args.interval_duration,
+            epoch=ptychonn.parameters.EPOCHS, bs=ptychonn.parameters.TRAIN_BATCH_SIZE, time_limit=args.interval_duration/2,
             shm_signal_name="unipipe_exp_" + str(interval_count) + "th_interval_modeltrained", logger=logger
         )
 
