@@ -11,6 +11,7 @@ from . import parameters
 from . import error_calculation
 from . import ipc
 from . import datastream
+from . import perf_model
 
 from logfast import fastlogger
 
@@ -129,11 +130,11 @@ def train(model, trainloader, epoch, bs, chkpt_path, device="cuda", lr=1e-3,
 
     return metrics
 
-def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, result_fiilup_list, epoch, bs,
-                       chkpt_path, device="cuda", lr=1e-3, time_limit=None, logger:fastlogger.FastLogger=None, constant_bs=False):
+def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, result_fiilup_list, epoch, trainbs, inferbs,
+                       chkpt_path, device="cuda", lr=1e-3, time_limit=None, logger:fastlogger.FastLogger=None, constant_bs=False, inffrac=1.0):
     logger.log("UNIPIPE BEGIN")
     logger.log("UNIPIPE TRAINING DATASET SIZE", len(trainloader.dataset))
-    logger.log("UNIPIPE TRAINING BATCH SIZE", bs)
+    logger.log("UNIPIPE TRAINING BATCH SIZE", trainbs)
     logger.log("UNIPIPE CONSTANT TRAINING BS", constant_bs)
 
     start_time = time.time()
@@ -142,7 +143,7 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
 
     # taken from paper's code
     # if optimizer_objects is None:
-    iter_per_epoch = np.floor(len(trainloader.dataset)/bs) + 1
+    iter_per_epoch = np.floor(len(trainloader.dataset)/trainbs) + 1
     step_size = 6 * iter_per_epoch
     criterion = torch.nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr = lr)
@@ -155,19 +156,24 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
     # for training batch size control
     train_dataset_size = len(trainloader.dataset)
     print(train_dataset_size)
-    
+
     # here we will determine the batch size for training and inference from following parameters
     #
     # 1. Deadline
     # 2. Data rate
     # 3. forward pass time per data sample
     # 4. backward pass time per data sample
-    ideal_infer_bs = math.ceil((1 + teststream.get_deadlinesec() * teststream.get_datarate()) / 2)
+    if not constant_bs:
+        ideal_infer_bs = min(parameters.INFERENCE_BATCH_SIZE,
+                         int(inffrac * perf_model.estimate_infer_bs(teststream.datarate, teststream.deadline_sec)))
+    else:
+        ideal_infer_bs = inferbs
+
     logger.log("INFER BATCH SIZE IDEAL", ideal_infer_bs)
     if ideal_infer_bs == 0:
         ideal_infer_bs = 1
 
-    ideal_train_batchsize = bs
+    ideal_train_batchsize = trainbs
     negative_train_batchsize_count = 0
     missed_infer = 0
 
@@ -208,12 +214,6 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
         if time_limit is not None and time.time() - start_time > time_limit:
             logger.log("UNIPIPE EPOCH END TIMELIMIT OVER", cur_epoch + 1)
             break
-        # we assume in an interval the training will start after half of interval
-        # this half will be used to prepare the training data (generate ground truth)
-        print(time.time() - start_time, time_limit/2)
-        if stop_train and time.time() - start_time > time_limit/2:
-            logger.log("HALF INTERVAL OVER TRAIN WILL RESUME")
-            stop_train = False
 
         print("Epoch count:", cur_epoch)
 
@@ -319,10 +319,9 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
                     #     (2 * (time_uf + time_ub))
                     # )
                     
-                    ideal_train_batchsize = min(math.floor(
-                        ideal_infer_bs * (1-teststream.get_datarate()*time_uf) /\
-                        2 * (time_uf + time_ub) * teststream.get_datarate()
-                    ), parameters.TRAIN_BATCH_SIZE)
+                    ideal_train_batchsize = min(
+                        perf_model.estimate_train_bs(ideal_infer_bs, time_uf, time_ub, teststream.get_datarate()),
+                        parameters.TRAIN_BATCH_SIZE)
 
                 if ideal_train_batchsize != prev_ideal_train_bs:
                     logger.log("TRAINBATCH SIZE FROM", prev_ideal_train_bs, ideal_train_batchsize,
@@ -369,12 +368,12 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
         # update flag to stop training if training brings out minimal improvement
         # this condition needed because it is possible in current epoch not a single training is run
         if not stop_train:
-            if abs(tot_loss/(total_train_iter_count) - previous_loss) <= parameters.LOSS_CHANGE_MIN_THRESHOLD:
+            if abs(tot_loss/(total_train_iter_count + 1) - previous_loss) <= parameters.LOSS_CHANGE_MIN_THRESHOLD:
                 stop_train = True
                 logger.log("UNIPIPE TRAINING STOP CONVERGENCE")
                 interval_remaining_time = time.time() - interval_init_time
                 logger.log("UNIPIPE INTERVAL REM. TIME", interval_remaining_time)
-            previous_loss = tot_loss/(total_train_iter_count)
+            previous_loss = tot_loss/(total_train_iter_count + 1)
 
         logger.log("UNIPIPE ITER. TIME", iteration_time/total_iter_count)
         logger.log("UNIPIPE EPOCH END", cur_epoch + 1)

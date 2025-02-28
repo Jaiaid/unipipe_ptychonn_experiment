@@ -50,8 +50,13 @@ if __name__ == "__main__":
     arg_parser.add_argument("--deadline", "-dead", type=int, required=True, help="each request deadline after arrival in millisecond")
     arg_parser.add_argument("--gtdefault", "-gtd", action="store_true", help="what to take as default response for missed request")
     arg_parser.add_argument("--allckpttest", "-ckpttest", action="store_true", help="if all checkpoints will be saved and tested with inference data")
-    arg_parser.add_argument("--constant-trainbs", "-consttrainbs", action="store_true", help="if constant training batch size will be used")
+    arg_parser.add_argument("--constant-bs", "-constbs", action="store_true", help="if constant batch size will be used")
+    arg_parser.add_argument("--inferbs", "-inferbs", type=int, default=ptychonn.parameters.INFERENCE_BATCH_SIZE,  help="if constant inference batch size will be used what will be the value")
+    arg_parser.add_argument("--trainbs", "-trainbs", type=int, default=ptychonn.parameters.TRAIN_BATCH_SIZE, help="if constant train batch size will be used what will be the value")
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
+    arg_parser.add_argument("--iprfrac", "-iprfrac", type=float, default=None, help="what portion of training data will come from IPR")
+    arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
+    arg_parser.add_argument("--inffrac", "-inffrac", type=float, default=1.0, help="how much factor to multiply with infer bs")
     # get the arguments
     args = arg_parser.parse_args()
 
@@ -64,8 +69,8 @@ if __name__ == "__main__":
             print(attr, "=", ptychonn.parameters.__dict__[attr])
 
     dataset_dict = ptychonn.dataset.get_dataset(
-        nvalid_percentage=ptychonn.parameters.VALID_PERCENTAGE,
-        ntest_percentage=ptychonn.parameters.TEST_PERCENTAGE)
+        datarate=args.datarate, deadline=args.deadline/1000,
+        overrideratio=args.iprfrac, IPR_throughput=args.ipr_throughput)
 
     train_data = dataset_dict["train"]
     valid_data = dataset_dict["valid"]
@@ -211,8 +216,8 @@ if __name__ == "__main__":
         train_metrics, served, missed = ptychonn.process_funcs.unipipe_traininfer(
             model=model, trainloader=trainloader, teststream=teststream, result_fiilup_list=result_list[interval_count], 
             chkpt_path="inctrained_interval{0}_model.pth".format(interval_count),
-            epoch=ptychonn.parameters.EPOCHS, bs=ptychonn.parameters.TRAIN_BATCH_SIZE,
-            time_limit=args.interval_duration, logger=logger, constant_bs=args.constant_trainbs
+            epoch=ptychonn.parameters.EPOCHS, trainbs=args.trainbs, inferbs=args.inferbs,
+            time_limit=args.interval_duration, logger=logger, constant_bs=args.constant_bs, inffrac=args.inffrac
         )
         spent_time = time.time() - start_time
 
