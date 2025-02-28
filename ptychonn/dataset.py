@@ -9,12 +9,26 @@ from torchsummary import summary
 from torch.utils.data import TensorDataset, DataLoader
 
 from . import parameters
+from . import perf_model
 
-def get_dataset(nvalid_percentage, ntest_percentage):
+def get_dataset(datarate, deadline, overrideratio=None, IPR_throughput=None):
+    if  IPR_throughput is None:
+        IPR_throughput = parameters.IPR_THROUGHPUT
+    
+    if overrideratio is None:
+        ratio = perf_model.estimate_train_test_ratio(
+            IPR_throughput=IPR_throughput,
+            datarate=datarate, deadline=deadline)
+    else:
+        ratio = overrideratio
+
+    ntest_percentage = (1-ratio)*100
+    nvalid_percentage = max(1, (100-ntest_percentage)*0.3)
+
     diffr_data = np.load(parameters.DATA_DIFFR_PATH)["arr_0"]
 
     diffr_data_red = np.zeros((diffr_data.shape[0],diffr_data.shape[1],64,64), float)
-    for i in range(diffr_data.shape[0]):
+    for i in range(1, diffr_data.shape[0]):
         for j in range(diffr_data.shape[1]):
             diffr_data_red[i,j] = resize(diffr_data[i,j,32:-32,32:-32],(64,64),preserve_range=True, anti_aliasing=True)
             diffr_data_red[i,j] = np.where(diffr_data_red[i,j]<3,0,diffr_data_red[i,j])
