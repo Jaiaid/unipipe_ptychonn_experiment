@@ -80,6 +80,7 @@ if __name__=="__main__":
     # generation state
     current_generate_idx = 0
     current_interval = 0
+
     total_generated = 0
     total_missed = 0
     retry_attempt = 0
@@ -111,11 +112,12 @@ if __name__=="__main__":
         while current_timestamp - current_interval_start_timestamp < deadline_sec:
             # to indicate consumption tp transmit process the data is deleted
             try:
-                ipc.remove_shm("{0}.raw".format(current_generate_idx))
+                ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_generate_idx))
                 # retry_attempt = 0
             except FileNotFoundError as e:
+
                 # current_generate_idx += 1
-                # print(current_generate_idx, list(os.listdir("/dev/shm/"))[-20:-1])
+                print(current_generate_idx, list(os.listdir("/dev/shm/"))[-12:-1])
                 current_timestamp = time.time()
                 total_missed += 1
                 # retry_attempt = 0
@@ -131,10 +133,10 @@ if __name__=="__main__":
 
             # create the data in shared memory space /dev/shm
             ipc.create_shm_data(
-                os.path.join(cur_folder, "{0}.rawgti").format(current_generate_idx),
+                os.path.join(cur_folder, parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(current_generate_idx)),
                 gt_data_i[current_generate_idx])
             ipc.create_shm_data(
-                os.path.join(cur_folder, "{0}.rawgtph").format(current_generate_idx),
+                os.path.join(cur_folder, parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(current_generate_idx)),
                 gt_data_ph[current_generate_idx])
             total_generated += 1
 
