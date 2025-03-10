@@ -91,7 +91,8 @@ if __name__=="__main__":
         phase_retrieval_genrate=args.generation_rate,
         acquisition_rate=args.acquisition_rate,
         deadline_sec=deadline_sec)
-    skip_data_idx = round(deadline_sec * (args.acquisition_rate - args.generation_rate))
+    skip_data_idx = round(deadline_sec * args.generation_rate)
+    print(time_stretch_continuous_data_process, skip_data_idx)
 
     # signal finish of initiation
     signal_producer()
@@ -101,23 +102,28 @@ if __name__=="__main__":
     print("data capture start", time.time())
 
     start_timestamp = time.time()
+    current_timestamp = start_timestamp
+    cur_interval = 0
     # to give producer time to put first data
     time.sleep(1/args.acquisition_rate)
-    for cur_interval in range(args.interval_count):
+    # for cur_interval in range():#(args.interval_count):
+    while current_timestamp - start_timestamp < (args.interval_count * deadline_sec):
         cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_interval)
         ipc.create_shm_folder(cur_folder)
 
         current_interval_start_timestamp = time.time()
         current_timestamp = time.time()
-        while current_timestamp - current_interval_start_timestamp < deadline_sec:
+        while current_timestamp - current_interval_start_timestamp < time_stretch_continuous_data_process:
             # to indicate consumption tp transmit process the data is deleted
             try:
-                ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_generate_idx))
+                ipc.move_shm(
+                    parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_generate_idx),
+                    cur_folder
+                )
                 # retry_attempt = 0
             except FileNotFoundError as e:
-
                 # current_generate_idx += 1
-                print(current_generate_idx, list(os.listdir("/dev/shm/"))[-12:-1])
+                # print(current_generate_idx, list(os.listdir("/dev/shm/"))[-12:-1])
                 current_timestamp = time.time()
                 total_missed += 1
                 # retry_attempt = 0
@@ -143,10 +149,12 @@ if __name__=="__main__":
             # increase generation idx
             current_generate_idx += 1
             current_timestamp = time.time()
+        # one ipr interval done
+        ipc.create_shm_marker(parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_interval))
+        cur_interval += 1
 
-        ipc.create_shm_marker(parameters.SHM_MARKER_FMT_INTERVAL_END.format(cur_interval))
         
-        print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
+        # print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
         current_generate_idx += skip_data_idx - 1
 
     print("==================================IPR Mock Status=================================")
