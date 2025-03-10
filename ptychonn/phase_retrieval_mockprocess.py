@@ -103,12 +103,13 @@ if __name__=="__main__":
 
     start_timestamp = time.time()
     current_timestamp = start_timestamp
-    cur_interval = 0
+    data_process_interval_start_timestamp = start_timestamp
+    cur_ipriteration = 0
     # to give producer time to put first data
     time.sleep(1/args.acquisition_rate)
     # for cur_interval in range():#(args.interval_count):
     while current_timestamp - start_timestamp < (args.interval_count * deadline_sec):
-        cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_interval)
+        cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
         ipc.create_shm_folder(cur_folder)
 
         current_interval_start_timestamp = time.time()
@@ -126,6 +127,7 @@ if __name__=="__main__":
                 # print(current_generate_idx, list(os.listdir("/dev/shm/"))[-12:-1])
                 current_timestamp = time.time()
                 total_missed += 1
+                # current_generate_idx += 1
                 # retry_attempt = 0
                 # time.sleep(1/args.acquisition_rate)
                 # print(e)
@@ -133,9 +135,10 @@ if __name__=="__main__":
 
             # time gap to wait for the generation
             # it will be a busy loop
-            data_process_interval_start_timestamp = current_timestamp
+            current_timestamp = time.time()
             while current_timestamp - data_process_interval_start_timestamp < 1/args.generation_rate:
                 current_timestamp = time.time()
+            data_process_interval_start_timestamp = current_timestamp
 
             # create the data in shared memory space /dev/shm
             ipc.create_shm_data(
@@ -150,10 +153,9 @@ if __name__=="__main__":
             current_generate_idx += 1
             current_timestamp = time.time()
         # one ipr interval done
-        ipc.create_shm_marker(parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_interval))
-        cur_interval += 1
+        ipc.create_shm_marker(parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration))
+        cur_ipriteration += 1
 
-        
         # print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
         current_generate_idx += skip_data_idx - 1
 
