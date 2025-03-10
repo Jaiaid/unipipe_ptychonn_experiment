@@ -1,5 +1,7 @@
-import numpy as np
 import os
+import numpy as np
+
+from typing import Tuple
 
 from . import parameters
 from . import ipc
@@ -24,7 +26,7 @@ class SHMInferDataReader():
         self.cur_readidx = 0
         pass
 
-    def read(self, bs) -> tuple[np.ndarray, int]:
+    def read(self, bs) -> Tuple[np.ndarray, int, int]:
         consumed = 0
         missed = 0
         ara = None
@@ -47,9 +49,11 @@ class SHMInferDataReader():
                 # inference will be done only once
                 # so delete
                 ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
-                consumed += 1 
-            except Exception as e:
+                consumed += 1
+            except FileNotFoundError:
                 missed += 1
+            except Exception as e:
+                pass
             self.cur_readidx += 1
 
         return ara, consumed, missed
@@ -63,9 +67,10 @@ class SHMInferDataReader():
             
             For efficiency reason, it should be better called by consumer
         """
-        for filename in os.listdir("/dev/shm"):
+        for filename in sorted(os.listdir("/dev/shm")):
             if ".raw" in filename:
                 self.cur_readidx = int(filename.split(".")[0])
+                return
 
 
 class SHMTrainDataReader():
@@ -98,17 +103,19 @@ class SHMTrainDataReader():
         self.cur_readidx = 0
         # stored so in a epoch rotation can be done for a chunk of data
         self.cur_readidx_begin = 0
+        self.cur_readidx_end = 0
         self.cur_ipriteration = 0
         self.cur_datafoldername = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
         pass
 
     def set_curipriteration(self, cur_ipriteration):
         self.cur_ipriteration = cur_ipriteration
+        self.cur_datafoldername = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
 
     def reset(self):
         self.cur_readidx = self.cur_readidx_begin
 
-    def read(self, bs) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    def read(self, bs) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
         consumed = 0
         ara1 = ara2 = ara3 = None
         for i in range(bs):
@@ -124,13 +131,13 @@ class SHMTrainDataReader():
                         os.path.join(
                             self.cur_datafoldername,
                             parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(self.cur_readidx)
-                        )
+                        ), dtype=np.float32
                     ).reshape(1, 1, parameters.H, parameters.W)
                     ara3 = ipc.read_shm_data(
                         os.path.join(
                             self.cur_datafoldername,
                             parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
-                        )
+                        ), dtype=np.float32
                     ).reshape(1, 1, parameters.H, parameters.W)
                 else:
                     ara1 = np.vstack(
@@ -150,7 +157,7 @@ class SHMTrainDataReader():
                                 os.path.join(
                                     self.cur_datafoldername,
                                     parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(self.cur_readidx)
-                                )
+                                ), dtype=np.float32
                             ).reshape(1, 1, parameters.H, parameters.W)
                         ) 
                     )
@@ -160,15 +167,30 @@ class SHMTrainDataReader():
                                 os.path.join(
                                     self.cur_datafoldername,
                                     parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
-                                )
+                                ), dtype=np.float32
                             ).reshape(1, 1, parameters.H, parameters.W)
                         ) 
                     )
                 consumed += 1
             except Exception as e:
+                print(e)
+                # print(
+                #     os.path.join(
+                #             self.cur_datafoldername,
+                #             parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                #         ),
+                #     os.path.exists(
+                #         os.path.join(
+                #             self.cur_datafoldername,
+                #             parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                #         )
+                #     )
+                # )
                 pass
             
             self.cur_readidx += 1
+            if self.cur_readidx > self.cur_readidx_end:
+                self.cur_readidx = self.cur_readidx_begin
 
         return ara1, ara2, ara3, consumed
     
@@ -179,14 +201,26 @@ class SHMTrainDataReader():
             
             For efficiency reason, it should be better called by consumer
         """
-        for filename in sorted(
-                os.listdir(
-                    os.path.join(
-                        "/dev/shm",
-                        parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
-                    )
-                )
-            ):
+        self.cur_datafoldername = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
+        
+        sorted_filelist = sorted(
+            list(os.listdir(
+                os.path.join(
+                    "/dev/shm",
+                    self.cur_datafoldername
+                ))
+            )
+        )
+
+        for filename in sorted_filelist:
             if ".rawgti" in filename:
                 self.cur_readidx = int(filename.split(".")[0])
                 self.cur_readidx_begin = self.cur_readidx
+                break
+        
+        for i in range(len(sorted_filelist) - 1, -1, -1):
+            if ".rawgti" in sorted_filelist[i]:
+                self.cur_readidx_end = int(sorted_filelist[i].split(".")[0])
+                break
+
+        # print(self.cur_datafoldername, self.cur_readidx_begin, self.cur_readidx_end)
