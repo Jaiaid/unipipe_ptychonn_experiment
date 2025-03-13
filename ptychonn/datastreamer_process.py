@@ -25,7 +25,7 @@ from skimage.transform import resize
 def get_diffrdata() -> np.ndarray:
     diffr_data = np.load(parameters.DATA_DIFFR_PATH)["arr_0"]
 
-    diffr_data_red = np.zeros((diffr_data.shape[0],diffr_data.shape[1],64,64), float)
+    diffr_data_red = np.zeros((diffr_data.shape[0],diffr_data.shape[1],64,64), np.float32)
     for i in range(1, diffr_data.shape[0]):
         for j in range(diffr_data.shape[1]):
             diffr_data_red[i,j] = resize(diffr_data[i,j,32:-32,32:-32],(64,64),preserve_range=True, anti_aliasing=True)
