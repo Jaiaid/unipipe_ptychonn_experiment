@@ -9,7 +9,7 @@
 
 import argparse
 import os
-import shutil
+import math
 import random
 import copy
 import time
@@ -18,6 +18,7 @@ import torch
 import numpy as np
 import torch.utils
 import torch.utils.data
+import sklearn.metrics
 
 import ptychonn.model
 import ptychonn.dataset
@@ -26,114 +27,280 @@ import ptychonn.ipc
 import ptychonn.process_funcs
 import ptychonn.error_calculation
 import ptychonn.datastream
+import ptychonn.shm_datareader
 
 # for logging
 import logfast.fastlogger
 
 
-# def unipipe_traininfer(model, train_dataset, test_dataset, epoch_count):
-#     # calculate batch size according to performance model
+def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
+                       teststream:ptychonn.shm_datareader.SHMInferDataReader,
+                       epoch_count, datarate, deadline_sec, chkpt_path,
+                       logger:logfast.fastlogger.FastLogger,
+                       time_limit=None, constant_bs=False,
+                       trainbs=ptychonn.parameters.TRAIN_BATCH_SIZE, inferbs=ptychonn.parameters.INFERENCE_BATCH_SIZE, inffrac=1.0):
 
-#     for i in range
+    logger.log("UNIPIPE BEGIN")
+    logger.log("UNIPIPE TRAINING DATASET SIZE", len(trainloader))
+    logger.log("UNIPIPE TRAINING BATCH SIZE", trainbs)
+    logger.log("UNIPIPE CONSTANT TRAINING BS", constant_bs)
 
-#     return
+    start_time = time.time()
+    interval_init_time = time.time()
+    interval_remaining_time = time_limit
 
+    # taken from paper's code
+    # if optimizer_objects is None:
+    iter_per_epoch = np.floor(len(trainloader)/trainbs) + 1
+    step_size = 6 * iter_per_epoch
+    criterion = torch.nn.L1Loss()
+    optimizer = torch.optim.Adam(model.parameters(), lr = ptychonn.parameters.LR)
+    scheduler = torch.optim.lr_scheduler.CyclicLR(
+        optimizer, base_lr=ptychonn.parameters.LR/10, max_lr=ptychonn.parameters.LR,
+        step_size_up=step_size, cycle_momentum=False, mode='triangular2')
 
-def read_inferdata_batch(idx, bs):
-    consumed = 0
-    missed = 0
-    ara = None
-    for i in range(bs):
-        try:
-            # read it and add to batch
-            if consumed == 0:
-                ara = ptychonn.ipc.read_shm_data(
-                    ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(idx)
-                ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
+    # print("training mechanism creation takes ", time.time() - init_time)
+    # to store training related metrics
+    metrics = {"lrs": [], "losses": [], "val_losses": [], "best_val_loss": math.inf}
+    # for training batch size control
+    train_dataset_size = len(trainloader)
+
+    # here we will determine the batch size for training and inference from following parameters
+    #
+    # 1. Deadline
+    # 2. Data rate
+    # 3. forward pass time per data sample
+    # 4. backward pass time per data sample
+    if not constant_bs:
+        ideal_infer_bs = min(ptychonn.parameters.INFERENCE_BATCH_SIZE,
+                         int(inffrac * ptychonn.perf_model.estimate_infer_bs(datarate, deadline_sec)))
+    else:
+        ideal_infer_bs = inferbs
+
+    if ideal_infer_bs == 0:
+        ideal_infer_bs = 1
+    logger.log("INFER BATCH SIZE IDEAL", ideal_infer_bs)
+
+    ideal_train_batchsize = trainbs
+    negative_train_batchsize_count = 0
+    
+
+    # for loss measure and some stats
+    inference_iter_count = 0
+    total_iter_count = 0
+    total_consumed = 0
+    total_missed = 0
+    time_uf = None
+    time_ub = None
+
+    # test data will be consumed only once in the interval
+    iter_creation_start_time = time.time()
+    # testloader_iter = iter(teststream)
+    print("iterator creation time:", time.time() - iter_creation_start_time)
+    print("intialization time:", time.time() - interval_init_time)
+
+    train_start_time = time.time()
+    # to control when the training of current interval will stop
+    previous_loss = 0
+    # # training does not start on start of interval
+    # # we wait until half of interval (an emulation of delay in generating new training data)
+    # stop_train = True
+    stop_train = False
+
+    # arbitrary large epoch, for coding ease in tracking an epoch
+    # actual breaking condition is on time limit and loss
+    for cur_epoch in range(epoch_count):
+        logger.log("UNIPIPE EPOCH BEGIN", cur_epoch + 1)
+
+        tot_loss = 0.0
+        loss_amp = 0.0
+        loss_ph = 0.0
+        total_train_iter_count = 0
+        total_iter_count = 0
+
+        # to get iteration time
+        iteration_time = 0
+        if time_limit is not None and time.time() - start_time > time_limit:
+            logger.log("UNIPIPE EPOCH END TIMELIMIT OVER", cur_epoch + 1)
+            break
+
+        print("Epoch count:", cur_epoch)
+
+        traindata_start_idx = 0
+        time_uf = None
+        time_ub = None
+
+        while time_limit is not None and time.time() - start_time < time_limit:
+            logger.log("UNIPIPE ITERATION START", total_iter_count)
+            iteration_start_time = time.time()
+            # first take from test
+            infer_count = 0
+
+            try:
+                infer_batch, consumed, missed, inferidxlist = teststream.read(bs=ideal_infer_bs)
+                if infer_batch is None:
+                    return None, None, None, None, None
+                infer_count = infer_batch.shape[0]
+                inference_iter_count += 1
+            except Exception as e:
+                print(e)
+
+            if not stop_train:
+                train_batch = trainloader.read(bs=ideal_train_batchsize)
+                if train_batch[0] is None:
+                    return None, None, None, None, None
+
+            # some infer data is there, merge and pass to context
+            # or training is done now to pass only infer data to context
+            # or no infer data is in pipeline for now, so only training
+            if infer_count > 0 and not stop_train:
+                ft_images = torch.concat((torch.tensor(infer_batch), torch.tensor(train_batch[0])), axis=0).to("cuda")
+            elif infer_count > 0 and stop_train:
+                ft_images = torch.tensor(infer_batch[0]).to("cuda")
             else:
-                ara = np.vstack(
-                    (
-                        ara, ptychonn.ipc.read_shm_data(
-                            ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(idx)
-                        ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
-                    ) 
-                )
+                ft_images = torch.tensor(train_batch[0]).to("cuda")
 
-            # inference will be done only once
-            # so delete
-            ptychonn.ipc.remove_shm(ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(idx))
-            consumed += 1 
-        except Exception as e:
-            missed += 1
-        idx += 1
+            logger.log("UNIPIPE TRAIN, INFER BS", ideal_train_batchsize, infer_count)
+            # to keep track how many infer request missed due to forward pass latency
+            forward_pass_arrival_time = time.time()
+            pred_amps, pred_phs = model(ft_images) #Forward pass
+            forward_pass_done_time = time.time()
 
-    return idx, ara, consumed, missed
-
-
-def read_traindata_batch(idx, cur_ipriteration, bs):
-    cur_datafoldername = ptychonn.parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
-    consumed = 0
-    ara1 = ara2 = ara3 = None
-    for i in range(bs):
-        try:
-            if consumed == 0:
-                ara1 = ptychonn.ipc.read_shm_data(
-                    os.path.join(
-                        cur_datafoldername,
-                        ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(idx)
+            # before proceeding to backward pass release the inference results
+            # by release means put them in result array
+            # to avoid deadline miss as much as possible
+            if infer_count > 0:
+                true_amp = infer_batch[1]
+                true_ph = infer_batch[2]
+                for i in range(infer_count):
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        true_ph
                     )
-                ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
-                ara2 = ptychonn.ipc.read_shm_data(
-                    os.path.join(
-                        cur_datafoldername,
-                        ptychonn.parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(idx)
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        true_amp
                     )
-                ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
-                ara3 = ptychonn.ipc.read_shm_data(
-                    os.path.join(
-                        cur_datafoldername,
-                        ptychonn.parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(idx)
-                    )
-                ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
+            # update total missed count
+            logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - iteration_start_time)
+            total_missed += missed
+            total_consumed += consumed
+
+            # for ideal train batch size calculation
+            time_uf = (forward_pass_done_time -  forward_pass_arrival_time)/ft_images.shape[0]
+            # print("uf ", time_uf)
+
+            if not stop_train:
+                gt_amps = torch.tensor(train_batch[1]).to("cuda")
+                gt_phs = torch.tensor(train_batch[2]).to("cuda")
+
+                backward_pass_arrival_time = time.time()
+                #Compute losses
+                loss_a = criterion(pred_amps[infer_count:,:], gt_amps) #Monitor amplitude loss
+                loss_p = criterion(pred_phs[infer_count:,:], gt_phs) #Monitor phase loss but only within support (which may not be same as true amp)
+                loss = loss_a + loss_p #Use equiweighted amps and phase
+
+                #Zero current grads and do backprop
+                optimizer.zero_grad() 
+                loss.backward()
+                optimizer.step()
+
+                tot_loss += loss.detach().item()
+                loss_amp += loss_a.detach().item()
+                loss_ph += loss_p.detach().item()
+
+                scheduler.step() 
+                metrics['lrs'].append(scheduler.get_last_lr())
+                backward_pass_done_time = time.time()
+
+                time_ub = (backward_pass_done_time - backward_pass_arrival_time)/(ft_images.shape[0] - infer_count)
+                # print("ub ", time_ub)
+
+                # calculate batch size according to performance model if not constant batch size experiment
+                prev_ideal_train_bs = ideal_train_batchsize
+                if not constant_bs:
+                    ideal_train_batchsize = min(
+                        ptychonn.perf_model.estimate_train_bs(ideal_infer_bs, time_uf, time_ub, datarate),
+                        ptychonn.parameters.TRAIN_BATCH_SIZE)
+
+                if ideal_train_batchsize != prev_ideal_train_bs:
+                    logger.log("TRAINBATCH SIZE FROM", prev_ideal_train_bs, ideal_train_batchsize,
+                               time_ub, time_uf, ideal_infer_bs/datarate,
+                               ideal_infer_bs * time_uf + ideal_train_batchsize * (time_uf + time_ub))
+                if ideal_train_batchsize <= 0:
+                    logger.log("TRAINBATCH SIZE TO <=0", deadline_sec, 1-datarate*time_uf, time_uf, time_ub, datarate)
+                    # if the configuration does not allow training and inference, 
+                    # we will prioritize training 
+                    ideal_train_batchsize = 1
+                    negative_train_batchsize_count += 1
+                    logger.log("TRAINBATCH SIZE TO <=0 FOR TIMES", negative_train_batchsize_count)
+                    if negative_train_batchsize_count > 15:
+                        logger.log("TRAINBATCH SIZE TO <=0 ABOVE THRESHOLD, PRIORITIZE TRAINING", negative_train_batchsize_count)
+                        ideal_train_batchsize = ptychonn.parameters.TRAIN_BATCH_SIZE
+                        negative_train_batchsize = True
+                        # ideal_infer_bs = None
+                        constant_bs = True
+                else:
+                    negative_train_batchsize_count = 0
+                total_train_iter_count += 1
+
+                iter_end_timestamp = time.time()
+                logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
             else:
-                ara1 = np.vstack(
-                    (
-                        ara1,
-                        ptychonn.ipc.read_shm_data(
-                            os.path.join(
-                                cur_datafoldername,
-                                ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(idx)
-                            )
-                        ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
-                    ) 
-                )
-                ara2 = np.vstack(
-                    (
-                        ara2, ptychonn.ipc.read_shm_data(
-                            os.path.join(
-                                cur_datafoldername,
-                                ptychonn.parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(idx)
-                            )
-                        ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
-                    ) 
-                )
-                ara3 = np.vstack(
-                    (
-                        ara3, ptychonn.ipc.read_shm_data(
-                            os.path.join(
-                                cur_datafoldername,
-                                ptychonn.parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(idx)
-                            )
-                        ).reshape(1, 1, ptychonn.parameters.H, ptychonn.parameters.W)
-                    ) 
-                )
-            consumed += 1
-        except Exception as e:
-            pass
+                iter_end_timestamp = time.time()
+
+            total_iter_count += 1
+            logger.log("ITERATION TAKES(sec.)", iter_end_timestamp - iteration_start_time)
+            iteration_time += iter_end_timestamp - iteration_start_time
+
+            if traindata_start_idx >= len(trainloader):
+                logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1, traindata_start_idx, len(trainloader))
+                break
+
+            # if stop_train and time.time() - start_time > time_limit/2:
+            #     logger.log("HALF INTERVAL OVER TRAIN WILL RESUME")
+            #     stop_train = False
+
+        if not stop_train:
+            ptychonn.process_funcs.update_saved_model(
+                model=model, path="/dev/shm/", name="{0}_e{1}.pth".format(chkpt_path[:-4], cur_epoch))
+            #Divide cumulative loss by number of batches-- sli inaccurate because last batch is different size
+            metrics['losses'].append([tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1)])
+            logger.log("TRAINING LOSS AT EPOCH", cur_epoch, tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1))
         
-        idx += 1
+        # update flag to stop training if training brings out minimal improvement
+        # this condition needed because it is possible in current epoch not a single training is run
+        if not stop_train:
+            if abs(tot_loss/(total_train_iter_count + 1) - previous_loss) <= ptychonn.parameters.LOSS_CHANGE_MIN_THRESHOLD:
+                stop_train = True
+                logger.log("UNIPIPE TRAINING STOP CONVERGENCE")
+                interval_remaining_time = time.time() - interval_init_time
+                logger.log("UNIPIPE INTERVAL REM. TIME", interval_remaining_time)
+            previous_loss = tot_loss/(total_train_iter_count + 1)
 
-    return idx, ara1, ara2, ara3
+        logger.log("UNIPIPE ITER. TIME", iteration_time/total_iter_count)
+        logger.log("UNIPIPE EPOCH END", cur_epoch + 1)
+        if cur_epoch + 1 == epoch_count:
+            stop_train = True
+            logger.log("MAX EPOCH DONE, NO TRAINING IN CURRENT INTERVAL")
+
+        # if train stopped switch to ideal infer  bs
+        if stop_train:
+            ideal_infer_bs = math.ceil((1 + deadline_sec * datarate) / 2)
+            logger.log("TRAIN DONE, SWITCHING TO PERF. MODEL INFER BS.", ideal_infer_bs)
+
+    logger.log("UNIPIPE TRAINING TAKES", time.time() - train_start_time)
+    logger.log("UNIPIPE TOTAL TIME:", time.time() - start_time)
+    logger.log("TOTAL CONSUMED,MISSED", total_consumed, total_missed)
+
+    return metrics, total_consumed, total_missed, time_uf, time_ub
+
 
 # blocking function to wait for producer to start transmission
 # this is part of mechanism to synchronize start of transmission and processing
@@ -198,6 +365,9 @@ if __name__ == "__main__":
 
     # init the model
     model = ptychonn.model.recon_model()
+    # init the data reader
+    infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
+    train_datareader = ptychonn.shm_datareader.SHMTrainDataReader()
 
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
@@ -205,19 +375,18 @@ if __name__ == "__main__":
     # training state controller variable initiation
     start_time = time.time()
     cur_ipriteration = 0
+    cur_ipriteration_infercountlimit = 0
     cur_interval = 0
     current_time = start_time
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
     total_runtime = args.interval_count * deadline_sec
     total_consumed = 0
-    consumed_batch = 0
+    total_consumed_train = 0
     total_missed = 0
-    missed_iprinterval = 0
+    nn_uf = None
+    nn_ub = None
     unittime_det_phase = True
-    cur_infer_dataid = 0
-    cur_train_dataid = 0
-    print("unipipe start", start_time)
 
     logger.log("INTERVAL START {0}".format(cur_interval + 1))
     while current_time - start_time < total_runtime:
@@ -237,28 +406,20 @@ if __name__ == "__main__":
         # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
         if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
             cur_ipriteration += 1
+            # TODO
+            # This is one portion of outer batch processing part of performance model
+            # here we give how much data to read for inference before another ipr iteration done
+            cur_ipriteration_infercountlimit = int(args.ipr_throughput * deadline_sec)
             # update the current inference idx and training data idx
             # the files are named in such a way that
             # t1 = time.time()
-            for filename in os.listdir("/dev/shm"):
-                if ".raw" in filename:
-                    cur_infer_dataid = int(filename.split(".")[0])
+            infer_datareader.reposition()
             # print("first infer data selection takes {0}s".format(time.time() - t1))
 
             # t1 = time.time()
-            for filename in sorted(
-                os.listdir(
-                    os.path.join(
-                        "/dev/shm",
-                        ptychonn.parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
-                    )
-                )
-            ):
-                if ".rawgti" in filename:
-                    cur_train_dataid = int(filename.split(".")[0])
+            train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
+            train_datareader.reposition()
             # print("first train data selection takes {0}s".format(time.time() - t1))
-            print(time.time(), "From consumer process : ", cur_ipriteration, cur_infer_dataid, cur_train_dataid)
-
 
         # pretrain stage
         if cur_interval == 0:
@@ -272,98 +433,64 @@ if __name__ == "__main__":
             # performance_metrics["inference time"].append(time.time() - start_time)
             continue
 
-        # if unittime still undetermined 
-        # take only one data sample 
-        if unittime_det_phase:
-            cur_train_dataid, train_data_in, train_data_gtamp, train_data_gtph = read_traindata_batch(
-                cur_train_dataid, cur_ipriteration, bs=1)
-            cur_infer_dataid, inferdata_in, consumed_batch, missed_iprinterval = read_inferdata_batch(cur_infer_dataid, bs=1)
-            
-            unittime_det_phase = False
-            continue
-        else:
-            trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
-            inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
-            # TODO:
-            # put performance model call here to determine the batch size
+        consumed_batch = 0
+        consumed_train = 0
+        missed_iprinterval = 0
 
-            # reading the data
-            cur_train_dataid, train_data_in, train_data_gtamp, train_data_gtph = read_traindata_batch(
-                cur_train_dataid, cur_ipriteration, bs=ptychonn.parameters.TRAIN_BATCH_SIZE)
-            cur_infer_dataid, inferdata_in, consumed_batch, missed_iprinterval = read_inferdata_batch(
-                cur_infer_dataid,
-                bs=ptychonn.parameters.INFERENCE_BATCH_SIZE)
+        trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
+        inferbs = min(ptychonn.parameters.INFERENCE_BATCH_SIZE, cur_ipriteration_infercountlimit)
+        # TODO:
+        # put performance model call here to determine the batch size
+        # reading the data
+        # train_data_in, train_data_gtamp, train_data_gtph, consumed_train = train_datareader.read(bs=trainbs)
+        # inferdata_in, consumed_batch, missed_iprinterval = infer_datareader.read(bs=inferbs)
+
+
+
+        unipipe_time_start = time.time()
+        # same as T_IPR
+        unipipe_time_limit = args.ipr_throughput * deadline_sec / args.datarate
+        trainsize = unipipe_time_limit * args.ipr_throughput
+        infersize = unipipe_time_limit * args.datarate # same as args.ipr_throughput * deadline_sec
+        if nn_uf is None:
+            epoch_count = 1000000
+        else:
+            # from performance model
+            epoch_count = int(round((unipipe_time_limit - nn_uf*infersize)/((nn_uf + nn_ub) * trainsize)))
 
         # TODO
         # put unipipe traininfer for one ipriteration data here
-        # currently just wait code
-        # print("sleeping for {0}s".format(args.ipr_throughput * deadline_sec / args.datarate))
-        # print(args.ipr_throughput, deadline_sec, args.datarate)
-        # time.sleep(
-        #     args.ipr_throughput * deadline_sec / args.datarate
-        # )
+        # calculate number of epoch to run the unipipe train
+
+        metrics, _, _, nn_uf, nn_ub = unipipe_traininfer(
+            model, train_datareader, infer_datareader, epoch_count=epoch_count,
+            datarate=args.datarate, deadline_sec=deadline_sec,
+            chkpt_path="inctrained_interval{0}_model.pth".format(cur_ipriteration), logger=logger,
+            time_limit=unipipe_time_limit)
+        # busy wait until time is passed
+        logger.log(
+            "CURIPRITERATION,EPOCH,UNIPIPE_TIME_LIMIT,ACTUAL_TIME", 
+            cur_ipriteration, epoch_count, unipipe_time_limit, time.time() - unipipe_time_start)
+
+        while time.time() - unipipe_time_start < unipipe_time_limit:
+            pass
 
         total_consumed += consumed_batch
         total_missed += missed_iprinterval
+        total_consumed_train += consumed_train
         # print(consumed_batch, missed_iprinterval)
 
+    print(total_consumed, total_missed, total_consumed_train)
 
-    print(total_consumed, total_missed)
-    # calculate error
-    # for interval_count in range(1, args.interval_count):
-    #     point_size = 3
-    #     overlap = 4*point_size
-    #     amp_error, ph_error = ptychonn.error_calculation.calc_error(
-    #         amps=result_list[interval_count][0], phs=result_list[interval_count][1],
-    #         true_amp=result_list[interval_count][2], true_ph=result_list[interval_count][3],
-    #         point_size=point_size, overlap=overlap
-    #     )
+    # postmortem of data, calculate error
+    amp_error, ph_error = ptychonn.error_calculation.postsimulation_error_calc()
 
-    #     # to measure only the training quality
-    #     if args.gtdefault:
-    #         if performance_metrics["miss rate"][interval_count - 1] < 1-1e-16:    
-    #             amp_error /= (1 - performance_metrics["miss rate"][interval_count - 1])
-    #             ph_error /= (1 - performance_metrics["miss rate"][interval_count - 1])
-    #         else:
-    #             # how should we measure the training quality for the response
-    #             # if no response is generated?
-    #             # for now we are just setting a default high value
-    #             amp_error = 0.01
-    #             ph_error = 3
+    with open(args.csvlog_file, "w") as fout:
+        # total consumed, total missed, total consumed train
+        fout.write("{0},{1},{2},{3},{4}"
+        "\n".format(total_consumed, total_missed, total_consumed_train, amp_error, ph_error))
 
-    #     test_metrics.append((amp_error, ph_error))
-
-    # # average
-    # # performance_metrics["train time"] = performance_metrics["train time"]/(INC_TRAIN_INTERVAL * ptychonn.parameters.EPOCHS)
-    # # performance_metrics["inference time"] = performance_metrics["inference time"]/(INC_TRAIN_INTERVAL)
-    # # -1 as the first interval is for pretrained model generation
-    # # performance_metrics["miss rate"] = performance_metrics["miss rate"]/(INC_TRAIN_INTERVAL-1)
-
-    # # printed in format to make copy to excel sheet easier
-    # # first print the amp. errors
-    # logger.log("AMP. ERROR", ",".join([str(entry[0]) for entry in test_metrics]))
-    # logger.log("PH. ERROR", ",".join([str(entry[1]) for entry in test_metrics]))
-
-    # logger.log("TRAINING TIME", performance_metrics["train time"])
-    # logger.log("INFERENCE TIME", performance_metrics["inference time"])
-    # logger.log("MISSRATE", performance_metrics["miss rate"])
-    # logger.log("STREAM MISSRATE", performance_metrics["miss rate stat datastreamer"])
-
-    # with open(args.csvlog_file, "a+") as fout:
-    #     fout.write(str(args.interval_count))
-    #     fout.write(",")
-    #     fout.write(str(args.interval_duration))
-    #     fout.write(",")
-    #     fout.write(",".join([str(entry[0]) for entry in test_metrics]))
-    #     fout.write(",")
-    #     fout.write(",".join([str(entry[1]) for entry in test_metrics]))
-    #     fout.write(",")
-    #     fout.write(",".join([str(entry) for entry in performance_metrics["inference time"]]))
-    #     fout.write(",")
-    #     fout.write(",".join([str(entry) for entry in performance_metrics["miss rate"]]))
-    #     fout.write(",")
-    #     fout.write(",".join([str(entry) for entry in performance_metrics["miss rate stat datastreamer"]]))
-    #     fout.write("\n")
+    logger.persist(args.csvlog_file[:-4] + ".log")
 
 
     # # do this at the end to avoid any performance in continual training
@@ -400,5 +527,3 @@ if __name__ == "__main__":
     #                 print(e)
     #                 break
 
-
-    logger.persist(args.csvlog_file[:-4] + ".log")
