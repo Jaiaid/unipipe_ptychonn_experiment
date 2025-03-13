@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from typing import Tuple
+from typing import Tuple, List
 
 from . import parameters
 from . import ipc
@@ -24,11 +24,18 @@ class SHMInferDataReader():
     """
     def __init__(self):
         self.cur_readidx = 0
-        pass
+        self.len = 0
 
-    def read(self, bs) -> Tuple[np.ndarray, int, int]:
+    def set_len(self, len):
+        self.len = len
+
+    def __len__(self) -> int:
+        return self.len
+
+    def read(self, bs) -> Tuple[np.ndarray, int, int, List[int]]:
         consumed = 0
         missed = 0
+        dataidx_list = []
         ara = None
         for i in range(bs):
             try:
@@ -50,13 +57,14 @@ class SHMInferDataReader():
                 # so delete
                 ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
                 consumed += 1
+                dataidx_list.append(self.cur_readidx)
             except FileNotFoundError:
                 missed += 1
             except Exception as e:
                 pass
             self.cur_readidx += 1
 
-        return ara, consumed, missed
+        return ara, consumed, missed, dataidx_list
     
     def reposition(self):
         """
@@ -107,6 +115,13 @@ class SHMTrainDataReader():
         self.cur_ipriteration = 0
         self.cur_datafoldername = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
         pass
+
+    def __len__(self) -> int:
+        """
+        Returned value is useful only after 
+        .set_curipriteration() and .reposition() is called once
+        """
+        return self.cur_readidx_end - self.cur_readidx_begin + 1
 
     def set_curipriteration(self, cur_ipriteration):
         self.cur_ipriteration = cur_ipriteration
