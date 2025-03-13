@@ -16,7 +16,7 @@ def create_shm_data(name:str, data:np.ndarray):
     data.tofile(os.path.join("/dev/shm", name))
 
 
-def read_shm_data(name:str, dtype=np.float64) -> np.ndarray:
+def read_shm_data(name:str, dtype=np.float32) -> np.ndarray:
     # https://numpy.org/doc/2.1/reference/generated/numpy.fromfile.html#numpy-fromfile
     # We assume this is used to serialize data among processes in same system
     # and both processes know in which format data will come 
