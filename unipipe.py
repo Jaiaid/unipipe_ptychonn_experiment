@@ -169,22 +169,23 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             # by release means put them in result array
             # to avoid deadline miss as much as possible
             if infer_count > 0:
-                true_amp = infer_batch[1]
-                true_ph = infer_batch[2]
+                pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
+                pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
+                # print(pred_amps.shape, pred_phs.shape)
                 for i in range(infer_count):
                     ptychonn.ipc.create_shm_data(
                         os.path.join(
                             ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
                             ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
                         ),
-                        true_ph
+                        pred_ph_cpu_np[i]
                     )
                     ptychonn.ipc.create_shm_data(
                         os.path.join(
                             ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
                             ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
                         ),
-                        true_amp
+                        pred_amps_cpu_np[i]
                     )
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - iteration_start_time)
@@ -408,14 +409,19 @@ if __name__ == "__main__":
 
         # start of unipipe initiation and call
         unipipe_time_start = time.time()
-        # TODO:
+        # TODO: DONE
         # put performance model call here to determine the batch size, length of unipipe inference
         # same as T_IPR
         unipipe_time_limit = args.ipr_throughput * deadline_sec / args.datarate
-        trainsize = unipipe_time_limit * args.ipr_throughput
-        infersize = unipipe_time_limit * args.datarate # same as args.ipr_throughput * deadline_sec
+        trainsize = int(round(unipipe_time_limit * args.ipr_throughput))
+        infersize = int(round(unipipe_time_limit * args.datarate)) # same as args.ipr_throughput * deadline_sec
         # set the reader length for the unipipe call
-        infer_datareader.set_len(len)
+        infer_datareader.set_len(infersize)
+
+        # log the performance model related states
+        logger.log(
+            "CURIPRITERATION, TIME_LIMIT, TRAIN_SIZE, INFER_SIZE",
+            cur_ipriteration, unipipe_time_limit, trainsize, infersize)
 
         # calculate number of epoch to run the unipipe train
         # it depends on some value which are unknown initially for that we just set an arbitrary value
@@ -437,8 +443,8 @@ if __name__ == "__main__":
             cur_ipriteration, epoch_count, unipipe_time_limit, time.time() - unipipe_time_start)
 
         # busy wait until time is passed
-        while time.time() - unipipe_time_start < unipipe_time_limit:
-            pass
+        # while time.time() - unipipe_time_start < unipipe_time_limit:
+        #     pass
 
 
     # postmortem of data, calculate error
