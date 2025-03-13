@@ -166,7 +166,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             forward_pass_done_time = time.time()
 
             # before proceeding to backward pass release the inference results
-            # by release means put them in result array
+            # by release means put them in result folder
             # to avoid deadline miss as much as possible
             if infer_count > 0:
                 pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
@@ -370,7 +370,7 @@ if __name__ == "__main__":
     logger.log("INTERVAL START {0}".format(cur_interval + 1))
     while current_time - start_time < total_runtime:
         current_time = time.time()
-        if current_time - cur_interval_start_time > deadline_sec:
+        if current_time - cur_interval_start_time > args.interval_duration:
             # mark of interval start
             logger.log("INTERVAL END {0}".format(cur_interval + 1))
             cur_interval += 1
@@ -420,7 +420,7 @@ if __name__ == "__main__":
 
         # log the performance model related states
         logger.log(
-            "CURIPRITERATION, TIME_LIMIT, TRAIN_SIZE, INFER_SIZE",
+            "CURIPRITERATION,TIME_LIMIT,TRAIN_SIZE,INFER_SIZE",
             cur_ipriteration, unipipe_time_limit, trainsize, infersize)
 
         # calculate number of epoch to run the unipipe train
