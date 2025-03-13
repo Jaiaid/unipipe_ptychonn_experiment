@@ -34,8 +34,7 @@ import logfast.fastlogger
 
 
 def pretrained_inferonly_process(
-        model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
-        teststream:ptychonn.shm_datareader.SHMInferDataReader,
+        model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
         logger:logfast.fastlogger.FastLogger, time_limit=None):
 
     logger.log("PRETRAINED BEGIN")
@@ -124,15 +123,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("--interval-count", "-icount", type=int, required=True, help="number of interval")
     arg_parser.add_argument("--datarate", "-drate", type=int, required=True, help="request/datasample per second")
     arg_parser.add_argument("--deadline", "-dead", type=int, required=True, help="each request deadline after arrival in millisecond")
-    arg_parser.add_argument("--gtdefault", "-gtd", action="store_true", help="what to take as default response for missed request")
-    arg_parser.add_argument("--allckpttest", "-ckpttest", action="store_true", help="if all checkpoints will be saved and tested with inference data")
     arg_parser.add_argument("--constant-bs", "-constbs", action="store_true", help="if constant batch size will be used")
     arg_parser.add_argument("--inferbs", "-inferbs", type=int, default=ptychonn.parameters.INFERENCE_BATCH_SIZE,  help="if constant inference batch size will be used what will be the value")
     arg_parser.add_argument("--trainbs", "-trainbs", type=int, default=ptychonn.parameters.TRAIN_BATCH_SIZE, help="if constant train batch size will be used what will be the value")
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
-    arg_parser.add_argument("--iprfrac", "-iprfrac", type=float, default=None, help="what portion of training data will come from IPR")
-    arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
-    arg_parser.add_argument("--inffrac", "-inffrac", type=float, default=1.0, help="how much factor to multiply with infer bs")
     # get the arguments
     args = arg_parser.parse_args()
 
@@ -146,7 +140,6 @@ if __name__ == "__main__":
     model = ptychonn.model.recon_model()
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
-    train_datareader = ptychonn.shm_datareader.SHMTrainDataReader()
 
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
@@ -166,34 +159,13 @@ if __name__ == "__main__":
     logger.log("INTERVAL START {0}".format(cur_interval + 1))
     while current_time - start_time < total_runtime:
         current_time = time.time()
-        if current_time - cur_interval_start_time > deadline_sec:
+        if current_time - cur_interval_start_time > args.interval_duration:
             # mark of interval start
             logger.log("INTERVAL END {0}".format(cur_interval + 1))
             cur_interval += 1
             cur_interval_start_time = current_time
             # mark of interval start
             logger.log("INTERVAL START {0}".format(cur_interval + 1))
-
-        # checking for signal existance from IPR process
-        # this progression needs to be done irrespective of interval
-        # as IPR will keep running for data from interval 0 also (for which model is already trained)
-        # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
-        # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
-        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
-            cur_ipriteration += 1
-            logger.log("IPR ITERATION START", cur_ipriteration)
-            
-            cur_ipriteration_infercountlimit = int(args.ipr_throughput * deadline_sec)
-            # update the current inference idx and training data idx
-            # the files are named in such a way that
-            # t1 = time.time()
-            infer_datareader.reposition()
-            # print("first infer data selection takes {0}s".format(time.time() - t1))
-
-            # t1 = time.time()
-            train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
-            train_datareader.reposition()
-            # print("first train data selection takes {0}s".format(time.time() - t1))
 
         # pretrain stage
         if cur_interval == 0:
@@ -207,12 +179,9 @@ if __name__ == "__main__":
 
         # put unipipe traininfer for one ipriteration data here
         metrics = pretrained_inferonly_process(
-            model, train_datareader, infer_datareader, 
+            model, infer_datareader, 
             logger=logger, time_limit=deadline_sec)
         # log how much ipr iteration matches with unipipe iteration
-        logger.log(
-            "CURIPRITERATION,EPOCH,UNIPIPE_TIME_LIMIT,ACTUAL_TIME", 
-            cur_ipriteration, epoch_count, unipipe_time_limit, time.time() - unipipe_time_start)
 
         # busy wait until time is passed
         # while time.time() - unipipe_time_start < unipipe_time_limit:
