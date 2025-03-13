@@ -140,6 +140,7 @@ if __name__ == "__main__":
     model = ptychonn.model.recon_model()
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
+    infer_datareader.set_len(args.datarate * args.interval_duration)
 
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
