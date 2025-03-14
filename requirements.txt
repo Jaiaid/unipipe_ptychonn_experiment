@@ -1,6 +1,7 @@
 scikit-image==0.21.0
 scikit-learn==1.3.2
 torch
+torchsummary
 matplotlib==3.7.5
 matplotlib-inline==0.1.6
 numpy
