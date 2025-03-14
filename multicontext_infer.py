@@ -103,10 +103,11 @@ def multicontext_inferonly_process(
         model_load_time = time.time()
         if ptychonn.ipc.exist_shm(
             os.path.join(chkpt_dir, "inctrained_{0}_modeltrained".format(next_model))):
+            cur_model_dir = os.path.join("/dev/shm", chkpt_dir)
 
             logger.log("MODEL UPDATE TO", next_model)
-            print("inference process is swapping model, ", os.path.join(chkpt_dir, "inctrained_{0}_model.pth".format(next_model)))
-            model = torch.load(os.path.join(chkpt_dir, "inctrained_{0}_model.pth".format(next_model)))
+            print("inference process is swapping model, ", os.path.join(cur_model_dir, "inctrained_{0}_model.pth".format(next_model)))
+            model = torch.load(os.path.join(cur_model_dir, "{0}.pth".format(next_model)))
             model.to("cuda")
             logger.log("MODEL LOAD TAKES", time.time() - model_load_time)
             next_model += 1
