@@ -13,14 +13,14 @@ pushd $ROOTDIR
 c=$1
 dur=$2
 rate=$3
-accumulationallow=$4
+deadlinemsec=$4
 
 rm /dev/shm/unipipe_exp*
 rm model_multicontext/inctrained_interaval*
 rm /dev/shm/inctrained*
 rm /dev/shm/*_fastlog.log
 
-deadlinemsec=$((1000*$accumulationallow/$rate))
+# deadlinemsec=$((1000*$accumulationallow/$rate))
 
 EXP_SCRIPT=pretrained.py
 
