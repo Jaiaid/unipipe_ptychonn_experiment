@@ -157,7 +157,6 @@ if __name__ == "__main__":
     # training state controller variable initiation
     start_time = time.time()
     cur_ipriteration = 0
-    cur_ipriteration_infercountlimit = 0
     cur_interval = 0
     current_time = start_time
     cur_interval_start_time = current_time
@@ -176,6 +175,21 @@ if __name__ == "__main__":
             # mark of interval start
             logger.log("INTERVAL START {0}".format(cur_interval + 1))
 
+        # start of current interval processing
+        # checking for signal existance from IPR process
+        # this progression needs to be done irrespective of interval
+        # as IPR will keep running for data from interval 0 also (for which model is already trained)
+        # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
+        # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
+        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
+            cur_ipriteration += 1
+            logger.log("IPR ITERATION START", cur_ipriteration)
+            # update the current inference idx and training data idx
+            # the files are named in such a way that
+            # t1 = time.time()
+            infer_datareader.reposition()
+            # print("first infer data selection takes {0}s".format(time.time() - t1))
+
         # pretrain stage
         if cur_interval == 0:
             # if we have done pretraining already with some model no need to redo it
@@ -183,8 +197,6 @@ if __name__ == "__main__":
                 model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"))
                 continue
             continue
-
-        # start of current interval processing
 
         # put unipipe traininfer for one ipriteration data here
         metrics, consumed = pretrained_inferonly_process(
