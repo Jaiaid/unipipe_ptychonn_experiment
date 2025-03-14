@@ -155,7 +155,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             if infer_count > 0 and not stop_train:
                 ft_images = torch.concat((torch.tensor(infer_batch), torch.tensor(train_batch[0])), axis=0).to("cuda")
             elif infer_count > 0 and stop_train:
-                ft_images = torch.tensor(infer_batch[0]).to("cuda")
+                ft_images = torch.tensor(infer_batch).to("cuda")
             else:
                 ft_images = torch.tensor(train_batch[0]).to("cuda")
 

@@ -35,7 +35,7 @@ import logfast.fastlogger
 
 def pretrained_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
-        logger:logfast.fastlogger.FastLogger, time_limit=None):
+        logger:logfast.fastlogger.FastLogger, datarate:float, time_limit=None):
 
     logger.log("PRETRAINED BEGIN")
 
@@ -44,6 +44,10 @@ def pretrained_inferonly_process(
     # to store training related metrics
     total_consumed = 0
     total_iter_count = 0
+    # this is not needed I kept it from the beginning that's why not want to remove
+    metrics = {}
+    inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
+    iteration_start_time = time.time()
     
     while time.time() - start_time < time_limit and total_consumed < len(infer_datareader):
         logger.log("PRETRAINED ITERATION START", total_iter_count)
@@ -51,21 +55,20 @@ def pretrained_inferonly_process(
         infer_count = 0
 
         try:
-            infer_batch, consumed, missed, inferidxlist = teststream.read(bs=ptychonn.parameters.INFERENCE_BATCH_SIZE)
+            infer_batch, consumed, missed, inferidxlist = teststream.read(bs=inferbs)
             if infer_batch is None:
                 continue
             infer_count = infer_batch.shape[0]
             total_consumed += infer_count
-            inference_iter_count += 1
+            total_iter_count += 1
         except Exception as e:
             print(e)
             continue
 
-        # move the infer data to GPU
-        ft_images = torch.tensor(infer_batch[0]).to("cuda")
-
-        # to keep track how many infer request missed due to forward pass latency
         forward_pass_arrival_time = time.time()
+        # move the infer data to GPU
+        ft_images = torch.tensor(infer_batch).to("cuda")
+        # to keep track how many infer request missed due to forward pass latency
         pred_amps, pred_phs = model(ft_images) #Forward pass
         forward_pass_done_time = time.time()
 
@@ -91,6 +94,11 @@ def pretrained_inferonly_process(
         logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
         total_consumed += consumed
         total_iter_count += 1
+        # busy wait to ensure enough data accumulated
+        # while ptychonn.parameters.INFERENCE_BATCH_SIZE/datarate > time.time() - iteration_start_time:
+        #     pass
+        logger.log("ITERATION TIME", time.time() - iteration_start_time)
+        iteration_start_time = time.time()
 
     logger.log("TOTAL CONSUMED", total_consumed)
 
@@ -144,6 +152,7 @@ if __name__ == "__main__":
 
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
+    print("pretrained consumption start ", time.time())
     
     # training state controller variable initiation
     start_time = time.time()
@@ -154,8 +163,7 @@ if __name__ == "__main__":
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
     total_runtime = args.interval_count * deadline_sec
-    nn_uf = None
-    nn_ub = None
+    total_consumed = 0
 
     logger.log("INTERVAL START {0}".format(cur_interval + 1))
     while current_time - start_time < total_runtime:
@@ -179,9 +187,11 @@ if __name__ == "__main__":
         # start of current interval processing
 
         # put unipipe traininfer for one ipriteration data here
-        metrics = pretrained_inferonly_process(
+        metrics, consumed = pretrained_inferonly_process(
             model, infer_datareader, 
-            logger=logger, time_limit=deadline_sec)
+            logger=logger, datarate=args.datarate, time_limit=deadline_sec)
+        
+        total_consumed += consumed
         # log how much ipr iteration matches with unipipe iteration
 
         # busy wait until time is passed
