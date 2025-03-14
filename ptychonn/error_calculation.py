@@ -62,7 +62,7 @@ def calc_error(amps, phs, true_amp, true_ph, point_size, overlap):
     return mse(stitched_amp_down, true_amp[:,:,32,32]), mse(stitched_phase_down, true_ph[:,:,32,32])
 
 def postsimulation_error_calc() -> Tuple[float, float]:
-    void_image = np.ndarray(shape=(parameters.H, parameters.W), dtype=np.float32)
+    void_image = np.ndarray(shape=(parameters.H, parameters.W), dtype=np.float64)
     # first search for IPR generated images
     # for them error will be zero
     ipr_genidx_list = []
@@ -104,14 +104,14 @@ def postsimulation_error_calc() -> Tuple[float, float]:
                 parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(dataidx)
             ))
 
-            mse_amp = mse(Y_I[i].reshape(-1), amp_data.reshape(-1))
-            mse_ph = mse(Y_ph[i].reshape(-1), ph_data.reshape(-1))
+            mse_amp = mse(Y_I[i].reshape(-1).astype(np.float64), amp_data.reshape(-1).astype(np.float64))
+            mse_ph = mse(Y_ph[i].reshape(-1).astype(np.float64), ph_data.reshape(-1).astype(np.float64))
 
             mse_amp_errorlist.append(mse_amp)
             mse_ph_errorlist.append(mse_ph)
         else:
-            mse_amp_errorlist.append(mse(Y_I[i].reshape(-1), void_image.reshape(-1)))
-            mse_ph_errorlist.append(mse(Y_ph[i].reshape(-1), void_image.reshape(-1)))
+            mse_amp_errorlist.append(mse(Y_I[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
+            mse_amp_errorlist.append(mse(Y_ph[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
         
         dataidx += 1
 
