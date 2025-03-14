@@ -30,18 +30,22 @@ PRETRAIN_PID=$!
 python3 monitor.py 0 tmp_sysstat.csv &
 MONITOR_PROCESS_PID=$!
 
+set +x
 while ps -p ${PRETRAIN_PID} > /dev/null
 do
     # echo "training alive"
     sleep 5
 done
+set -x
 
 kill -2 ${MONITOR_PROCESS_PID}
 kill -2 ${MONITOR_PROCESS_PID}
+set +x 
 while ps -p ${MONITOR_PROCESS_PID} > /dev/null
 do
     # echo "inference alive"
     sleep 1
 done
+set -x
 
 set +x

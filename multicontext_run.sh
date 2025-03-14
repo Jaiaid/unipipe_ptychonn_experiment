@@ -45,6 +45,7 @@ INFER_PID=$!
 python3 monitor.py 0 tmp_sysstat.csv &
 MONITOR_PROCESS_PID=$!
 
+set +x
 while ps -p ${TRAIN_PID} > /dev/null
 do
     # echo "training alive"
@@ -55,15 +56,18 @@ do
     # echo "inference alive"
     sleep 5
 done
+set -x
 
 kill -2 ${MONITOR_PROCESS_PID}
 
 echo "inference and training process are done"
+set +x
 while ps -p ${MONITOR_PROCESS_PID} > /dev/null
 do
     # echo "inference alive"
     sleep 1
 done
+set -x
 
 popd
 
