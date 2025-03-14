@@ -110,8 +110,10 @@ def postsimulation_error_calc() -> Tuple[float, float]:
             mse_amp_errorlist.append(mse_amp)
             mse_ph_errorlist.append(mse_ph)
         else:
-            mse_amp_errorlist.append(mse(Y_I[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
-            mse_amp_errorlist.append(mse(Y_ph[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
+            mse_amp_errorlist.append(4)
+            mse_ph_errorlist.append(4)
+            # mse_amp_errorlist.append(mse(Y_I[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
+            # mse_amp_errorlist.append(mse(Y_ph[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
         
         dataidx += 1
 
