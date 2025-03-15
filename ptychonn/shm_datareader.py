@@ -188,7 +188,10 @@ class SHMTrainDataReader():
                     )
                 consumed += 1
             except Exception as e:
-                print(e)
+                # print(e, os.path.join(
+                #     self.cur_datafoldername,
+                #     parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                # ))
                 # print(
                 #     os.path.join(
                 #             self.cur_datafoldername,
