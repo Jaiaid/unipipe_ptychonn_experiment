@@ -1,7 +1,6 @@
 """
- We assume training will be done with full overhead but through unipipe
- We will keep serving inference in same context but partially trained model
- 
+ We assume only difference with unipipe is that no model training
+
  Objectives:
  1. Collect lost inference rate at each interval
  2. Collect mean inference accuracy, assume missed inference as 0 accuracy
