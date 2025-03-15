@@ -29,12 +29,13 @@ import ptychonn.error_calculation
 import ptychonn.datastream
 import ptychonn.shm_datareader
 
+import multicontext_parameters
 # for logging
 import logfast.fastlogger
 
 
 def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
-                       trainbs, datarate, deadline_sec, chkpt_dir,
+                       trainbs, epoch_count, datarate, deadline_sec, chkpt_dir,
                        logger:logfast.fastlogger.FastLogger, time_limit=None):
 
     logger.log("MULTICONTEXT TRAIN BEGIN")
@@ -70,7 +71,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 
     train_start_time = time.time()
     # to control when the training of current interval will stop
-    previous_loss = 0
+    previous_loss = math.inf
     # if epochs are finished or convergence happen we stop train but inference continues
     stop_train = False
     next_model = 0
@@ -78,7 +79,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     # arbitrary large epoch, for coding ease in tracking an epoch
     # actual breaking condition is on time limit and loss
     for cur_epoch in range(epoch_count):
-        logger.log("UNIPIPE EPOCH BEGIN", cur_epoch + 1)
+        logger.log("MULTICONTEXT TRAIN EPOCH BEGIN", cur_epoch + 1)
 
         tot_loss = 0.0
         loss_amp = 0.0
@@ -87,8 +88,8 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 
         # to get iteration time
         iteration_time = 0
-        if time_limit is not None and time.time() - start_time > time_limit:
-            logger.log("UNIPIPE EPOCH END TIMELIMIT OVER", cur_epoch + 1)
+        if time_limit is not None and time.time() - start_time > time_limit or stop_train:
+            logger.log("MULTICONTEXT TRAIN EPOCH END", cur_epoch)
             break
 
         print("Epoch count:", cur_epoch)
@@ -96,7 +97,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
         traindata_start_idx = 0
 
         while time_limit is not None and time.time() - start_time < time_limit:
-            logger.log("UNIPIPE ITERATION START", total_iter_count)
+            logger.log("MULTICONTEXT TRAIN ITERATION START", total_iter_count)
             iteration_start_time = time.time()
             
             train_batch = trainloader.read(bs=trainbs)
@@ -116,33 +117,30 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - iteration_start_time)
 
-            if not stop_train:
-                gt_amps = torch.tensor(train_batch[1]).to("cuda")
-                gt_phs = torch.tensor(train_batch[2]).to("cuda")
+            
+            gt_amps = torch.tensor(train_batch[1]).to("cuda")
+            gt_phs = torch.tensor(train_batch[2]).to("cuda")
 
-                backward_pass_arrival_time = time.time()
-                #Compute losses
-                loss_a = criterion(pred_amps, gt_amps) #Monitor amplitude loss
-                loss_p = criterion(pred_phs, gt_phs) #Monitor phase loss but only within support (which may not be same as true amp)
-                loss = loss_a + loss_p #Use equiweighted amps and phase
+            backward_pass_arrival_time = time.time()
+            #Compute losses
+            loss_a = criterion(pred_amps, gt_amps) #Monitor amplitude loss
+            loss_p = criterion(pred_phs, gt_phs) #Monitor phase loss but only within support (which may not be same as true amp)
+            loss = loss_a + loss_p #Use equiweighted amps and phase
 
-                #Zero current grads and do backprop
-                optimizer.zero_grad() 
-                loss.backward()
-                optimizer.step()
+            #Zero current grads and do backprop
+            optimizer.zero_grad() 
+            loss.backward()
+            optimizer.step()
 
-                tot_loss += loss.detach().item()
-                loss_amp += loss_a.detach().item()
-                loss_ph += loss_p.detach().item()
+            tot_loss += loss.detach().item()
+            loss_amp += loss_a.detach().item()
+            loss_ph += loss_p.detach().item()
 
-                scheduler.step() 
-                metrics['lrs'].append(scheduler.get_last_lr())
-                total_train_iter_count += 1
+            scheduler.step() 
+            metrics['lrs'].append(scheduler.get_last_lr())
 
-                iter_end_timestamp = time.time()
-                logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
-            else:
-                iter_end_timestamp = time.time()
+            iter_end_timestamp = time.time()
+            logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
 
             total_iter_count += 1
             logger.log("ITERATION TAKES(sec.)", iter_end_timestamp - iteration_start_time)
@@ -152,37 +150,48 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1, traindata_start_idx, len(trainloader))
                 break
 
-        if not stop_train:
-            if tot_loss / total_iter_count  < previous_loss:
-                ptychonn.process_funcs.update_saved_model(
-                    model=model, path=os.path.jpin("/dev/shm/", chkpt_dir), name="{0}.pth".format(next_model))
-                ptychonn.ipc.create_shm_marker(os.path.join(chkpt_dir, "inctrained_{0}_modeltrained".format(next_model)))
-                next_model += 1
+        # save model if loss is lower than before
+        if tot_loss / (total_iter_count + 1) < previous_loss:
+            ptychonn.process_funcs.update_saved_model(
+                model=model,
+                path=os.path.join(
+                    "/dev/shm/", chkpt_dir
+                ),
+                name=multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
+            )
+            ptychonn.ipc.create_shm_marker(
+                os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)))
+            
+            logger.log(
+                "CREATING CHECKPOINT",
+                os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)),
+                os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model))
+            )
+            next_model += 1
+            previous_loss = tot_loss/(total_iter_count + 1)
 
-            #Divide cumulative loss by number of batches-- sli inaccurate because last batch is different size
-            metrics['losses'].append([tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1)])
-            logger.log("TRAINING LOSS AT EPOCH", cur_epoch, tot_loss/(total_train_iter_count + 1),loss_amp/(total_train_iter_count + 1),loss_ph/(total_train_iter_count + 1))
+        #Divide cumulative loss by number of batches-- sli inaccurate because last batch is different size
+        metrics['losses'].append([tot_loss/(total_iter_count + 1),loss_amp/(total_iter_count + 1),loss_ph/(total_iter_count + 1)])
+        logger.log("TRAINING LOSS AT EPOCH", cur_epoch, tot_loss/(total_iter_count + 1),loss_amp/(total_iter_count + 1),loss_ph/(total_iter_count + 1))
         
         # update flag to stop training if training brings out minimal improvement
         # this condition needed because it is possible in current epoch not a single training is run
-        if not stop_train:
-            if abs(tot_loss/total_iter_count - previous_loss) <= ptychonn.parameters.LOSS_CHANGE_MIN_THRESHOLD:
-                stop_train = True
-                logger.log("MULTICONTEXT TRAIN STOP CONVERGENCE")
-                interval_remaining_time = time.time() - interval_init_time
-                logger.log("MULTICONTEXT TRAIN INTERVAL REM. TIME", interval_remaining_time)
-            previous_loss = tot_loss/total_iter_count
+        if previous_loss - tot_loss/(total_iter_count + 1) <= ptychonn.parameters.LOSS_CHANGE_MIN_THRESHOLD:
+            stop_train = True
+            logger.log("MULTICONTEXT TRAIN STOP CONVERGENCE")
+            interval_remaining_time = time.time() - interval_init_time
+            logger.log("MULTICONTEXT TRAIN INTERVAL REM. TIME", interval_remaining_time)
 
-        logger.log("MULTICONTEXT TRAIN ITER. TIME", iteration_time/total_iter_count)
+        logger.log("MULTICONTEXT TRAIN ITER. TIME", iteration_time/(total_iter_count + 1))
         logger.log("MULTICONTEXT TRAIN EPOCH END", cur_epoch + 1)
         if cur_epoch + 1 == epoch_count:
             stop_train = True
             logger.log("MAX EPOCH DONE, NO TRAINING IN CURRENT INTERVAL")
 
-    logger.log("UNIPIPE TRAINING TAKES", time.time() - train_start_time)
-    logger.log("UNIPIPE TOTAL TIME:", time.time() - start_time)
+    logger.log("MULTICONTEXT TRAIN TAKES", time.time() - train_start_time)
+    logger.log("MULTICONTEXT TRAIN TOTAL TIME:", time.time() - start_time)
 
-    return metrics
+    return metrics, cur_epoch
 
 
 # blocking function to wait for producer to start transmission
@@ -225,9 +234,6 @@ if __name__ == "__main__":
 
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
-    
-    # make a result directory where generated images will be stored
-    ptychonn.ipc.create_shm_folder(ptychonn.parameters.SHM_MARKER_NNRES_FOLDER)
 
     # init the model
     model = ptychonn.model.recon_model()
@@ -237,6 +243,7 @@ if __name__ == "__main__":
 
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
+    print("multicontext train consumption start ", time.time())
     
     # training state controller variable initiation
     start_time = time.time()
@@ -269,7 +276,7 @@ if __name__ == "__main__":
             cur_ipriteration += 1
             logger.log("IPR ITERATION START", cur_ipriteration)
             # create the directory for saving model
-            ptychonn.ipc.create_shm_folder("model_multicontext{0}".format(cur_ipriteration))
+            ptychonn.ipc.create_shm_folder(multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration))
             # print("first infer data selection takes {0}s".format(time.time() - t1))
 
             # t1 = time.time()
@@ -298,11 +305,11 @@ if __name__ == "__main__":
             cur_ipriteration, unipipe_time_limit, trainsize)
 
         # put unipipe traininfer for one ipriteration data here
-        metrics = multicontext_train(
+        metrics, epoch_count = multicontext_train(
             model, train_datareader, epoch_count=epoch_count,
             trainbs=trainbs, datarate=args.datarate, deadline_sec=deadline_sec,
-            chkpt_dir="model_multicontext{0}".format(cur_ipriteration), logger=logger,
-            time_limit=unipipe_time_limit)
+            chkpt_dir=multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration),
+            logger=logger, time_limit=unipipe_time_limit)
         # log how much ipr iteration matches with unipipe iteration
         logger.log(
             "CURIPRITERATION,EPOCH,TIME_LIMIT,ACTUAL_TIME", 
@@ -320,4 +327,4 @@ if __name__ == "__main__":
         # amp error, ph error
         fout.write("{0},{1}\n".format(amp_error, ph_error))
 
-    logger.persist(args.csvlog_file[:-4] + ".log")
+    logger.persist(args.csvlog_file[:-4] + "_train.log")

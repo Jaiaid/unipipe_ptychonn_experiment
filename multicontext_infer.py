@@ -26,6 +26,8 @@ import ptychonn.error_calculation
 import ptychonn.datastream
 import ptychonn.shm_datareader
 
+# for multicontext specific paramters
+import multicontext_parameters
 # for logging
 import logfast.fastlogger
 
@@ -49,7 +51,7 @@ def multicontext_inferonly_process(
     next_model = 0
     iteration_start_time = time.time()
     
-    while time.time() - start_time < time_limit and total_consumed < len(infer_datareader):
+    while time.time() - start_time < time_limit:
         logger.log("MULTICONTEXT ITERATION START", total_iter_count)
         # first take from test
         infer_count = 0
@@ -102,12 +104,17 @@ def multicontext_inferonly_process(
         # if it is there load it
         model_load_time = time.time()
         if ptychonn.ipc.exist_shm(
-            os.path.join(chkpt_dir, "inctrained_{0}_modeltrained".format(next_model))):
+            os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model))):
             cur_model_dir = os.path.join("/dev/shm", chkpt_dir)
 
             logger.log("MODEL UPDATE TO", next_model)
-            print("inference process is swapping model, ", os.path.join(cur_model_dir, "inctrained_{0}_model.pth".format(next_model)))
-            model = torch.load(os.path.join(cur_model_dir, "{0}.pth".format(next_model)))
+            print("inference process is swapping model, ", os.path.join(cur_model_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
+            model = torch.load(
+                os.path.join(
+                    cur_model_dir,
+                    multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
+                )
+            )
             model.to("cuda")
             logger.log("MODEL LOAD TAKES", time.time() - model_load_time)
             next_model += 1
@@ -217,7 +224,7 @@ if __name__ == "__main__":
         metrics, consumed = multicontext_inferonly_process(
             model, infer_datareader, 
             logger=logger, datarate=args.datarate, time_limit=deadline_sec,
-            chkpt_dir="model_multicontext{0}".format(cur_ipriteration))
+            chkpt_dir=multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration))
         
         total_consumed += consumed
         # log how much ipr iteration matches with unipipe iteration
@@ -233,4 +240,4 @@ if __name__ == "__main__":
         # amp error, ph error
         fout.write("{0},{1}\n".format(amp_error, ph_error))
 
-    logger.persist(args.csvlog_file[:-4] + ".log")
+    logger.persist(args.csvlog_file[:-4] + "_infer.log")
