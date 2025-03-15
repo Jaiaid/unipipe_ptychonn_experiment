@@ -39,7 +39,7 @@ rm /dev/shm/*_fastlog.log
 python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv &
 TRAIN_PID=$!
 
-python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} $BSARG -csvlog tmp.csv &
+python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} $BSARG -csvlog tmp.csv &
 INFER_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &
