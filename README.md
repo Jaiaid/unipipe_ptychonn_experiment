@@ -24,7 +24,7 @@ git clone https://github.com/mcherukara/PtychoNN
 cd PyTorch
 git clone https://github.com/Jaiaid/unipipe_ptychonn_experiment
 cd unipipe_ptychonn_experiment
-git checkout -b stream_train_infer_impl
+git checkout stream_train_infer_impl
 mkdir result_logs
 ```
 
