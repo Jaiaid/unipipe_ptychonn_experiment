@@ -27,7 +27,7 @@ for c in $INTERVAL_COUNT;do
     while [ $rate -le 200 ];
     do
         dur=$(($DSCOUNT_PER_INTERVAL/$rate))
-        for accumulationallow in 100;do
+        for iprt in 2 15 16;do
             set +x
             rm /dev/shm/*.raw
             rm -r /dev/shm/PTYCHO_STREAM*
@@ -38,11 +38,11 @@ for c in $INTERVAL_COUNT;do
             STREAM_PROCESS_PID=$!
             echo $STREAM_PROCESS_PID
 
-            python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $IPR_THROUGPUT -icount $c -d $deadlinemsec &
+            python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -d $deadlinemsec &
             IPR_PROCESS_PID=$!
             echo $IPR_PROCESS_PID
 
-            bash pretrained_run.sh $c $dur $rate $deadlinemsec $IPR_THROUGPUT
+            bash pretrained_run.sh $c $dur $rate $deadlinemsec $iprt
             set +x
             while ps -p ${STREAM_PROCESS_PID} > /dev/null
             do
@@ -58,11 +58,11 @@ for c in $INTERVAL_COUNT;do
             set -x
 
             # move generated files for later analysis
-            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv tmp.csv ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv tmp.log ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${accumulationallow}.log
-            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained/pretrained_sysstat_${c}_${dur}_${rate}_${accumulationallow}.csv 
+            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv tmp.csv ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${iprt}.csv
+            mv tmp.log ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${iprt}.log
+            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained/pretrained_sysstat_${c}_${dur}_${rate}_${iprt}.csv 
         done
         rate=$(($rate*2))
     done
@@ -74,7 +74,7 @@ for c in $INTERVAL_COUNT;do
     while [ $rate -le 200 ];
     do
         dur=$(($DSCOUNT_PER_INTERVAL/$rate))
-        for accumulationallow in 100;do
+        for iprt in 2 5 16;do
             set +x
             rm /dev/shm/*.raw
             rm -r /dev/shm/PTYCHO_STREAM*
@@ -85,11 +85,11 @@ for c in $INTERVAL_COUNT;do
             STREAM_PROCESS_PID=$!
             echo $STREAM_PROCESS_PID
 
-            python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $IPR_THROUGPUT -icount $c -d $deadlinemsec &
+            python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -d $deadlinemsec &
             IPR_PROCESS_PID=$!
             echo $IPR_PROCESS_PID
 
-            bash unipipe_run.sh $c $dur $rate $deadlinemsec $IPR_THROUGPUT
+            bash unipipe_run.sh $c $dur $rate $deadlinemsec $iprt
             set +x
             while ps -p ${STREAM_PROCESS_PID} > /dev/null
             do
@@ -105,11 +105,11 @@ for c in $INTERVAL_COUNT;do
             set -x
 
             # move generated files for later analysis
-            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv tmp.csv ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv tmp.log ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${accumulationallow}.log
-            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${dur}_${rate}_${accumulationallow}.csv
+            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv tmp.csv ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${iprt}.csv
+            mv tmp.log ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${iprt}.log
+            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${dur}_${rate}_${iprt}.csv
         done
         rate=$(($rate*2))
     done
@@ -121,10 +121,12 @@ for c in $INTERVAL_COUNT;do
     while [ $rate -le 200 ];
     do
         dur=$(($DSCOUNT_PER_INTERVAL/rate))
-        for accumulationallow in 100;do
+        for iprt in 2 5 16;do
             set +x
             rm /dev/shm/*.raw
             rm -r /dev/shm/PTYCHO_STREAM*
+            rm -r /dev/shm/MODEL_MULTICONTEXT*
+            
             set -x
 
             deadlinemsec=$((1000*$dur))
@@ -132,11 +134,11 @@ for c in $INTERVAL_COUNT;do
             STREAM_PROCESS_PID=$!
             echo $STREAM_PROCESS_PID
 
-            python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $IPR_THROUGPUT -icount $c -d $deadlinemsec &
+            python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -d $deadlinemsec &
             IPR_PROCESS_PID=$!
             echo $IPR_PROCESS_PID
 
-            bash multicontext_run.sh $c $dur $rate $deadlinemsec $IPR_THROUGPUT
+            bash multicontext_run.sh $c $dur $rate $deadlinemsec $iprt
             set +x
             while ps -p ${STREAM_PROCESS_PID} > /dev/null
             do
@@ -152,12 +154,12 @@ for c in $INTERVAL_COUNT;do
             set -x
             
             # move generated files for later analysis
-            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv tmp.csv ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${accumulationallow}.csv
-            mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${accumulationallow}_infer.log
-            mv tmp_train.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${accumulationallow}_train.log
-            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${dur}_${rate}_${accumulationallow}.csv
+            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv tmp.csv ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}.csv
+            mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}_infer.log
+            mv tmp_train.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}_train.log
+            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${dur}_${rate}_${iprt}.csv
         done
         rate=$(($rate*2))
     done
