@@ -75,6 +75,8 @@ if __name__=="__main__":
     # followings are also needed for proper cleanup
     consumed = 0
     missed = 0
+    consumed_nonpretrained = 0
+    missed_nonpretrained = 0
 
     next_delete_idx = 0
     deadline_sec = args.deadline_msec/1000
@@ -101,8 +103,12 @@ if __name__=="__main__":
                 try:
                     ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx))
                     missed += 1
+                    if next_delete_idx > total_image_count/5:
+                        missed_nonpretrained += 1
                 except FileNotFoundError as e:
                     consumed += 1
+                    if next_delete_idx > total_image_count/5:
+                        consumed_nonpretrained += 1
                 next_delete_idx += 1
                 current_timestamp = time.time()
             if args.debug_log and missed != initial_missed_count:
@@ -137,8 +143,12 @@ if __name__=="__main__":
             try:
                 ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx))
                 missed += 1
+                if next_delete_idx > total_image_count/5:
+                    missed_nonpretrained += 1
             except FileNotFoundError:
                 consumed += 1
+                if next_delete_idx > total_image_count/5:
+                    consumed_nonpretrained += 1
             next_delete_idx += 1
             current_timestamp = time.time()
     if args.debug_log and missed != initial_missed_count:
@@ -150,6 +160,8 @@ if __name__=="__main__":
     print("Total Transmitted Data: {0}".format(current_transmit_idx))
     print("Consumed: {0}".format(consumed))
     print("Missed: {0}".format(missed))
+    print("Consumed Non pretrained: {0}".format(consumed))
+    print("Missed Non pretrained: {0}".format(missed))
     print("Total Transmission Time: {0}s".format(transmission_end_time - start_timestamp))
     total_time = time.time() - start_timestamp
     print("Total Time: {0}s".format(total_time))
@@ -158,8 +170,8 @@ if __name__=="__main__":
     with open("transmission_state.csv", "w") as fout:
         # rate,deadline_msec,total,consumed,missed,transmission time, total time
         fout.write(
-            "{0},{1},{2},{3},{4},{5},{6}\n".format(
-                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed,
+            "{0},{1},{2},{3},{4},{5},{6},{7},{8}\n".format(
+                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed, consumed_nonpretrained, missed_nonpretrained,
                 transmission_end_time - start_timestamp, total_time
             )
         )

@@ -58,8 +58,8 @@ for c in $INTERVAL_COUNT;do
             set -x
 
             # move generated files for later analysis
-            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${iprt}.csv
-            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/pretrained/pretrained_ipr_generation_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv transmission_state.csv ${EXP_RESULT_DIR}/pretrained/pretrained_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
             mv tmp.csv ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${iprt}.csv
             mv tmp.log ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${iprt}.log
             mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained/pretrained_sysstat_${c}_${dur}_${rate}_${iprt}.csv 
@@ -154,8 +154,8 @@ for c in $INTERVAL_COUNT;do
             set -x
             
             # move generated files for later analysis
-            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${dur}_${rate}_${iprt}.csv
-            mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv ipr_generation_state.csv ${EXP_RESULT_DIR}/multicontext/multicontext_ipr_generation_state_${c}_${dur}_${rate}_${iprt}.csv
+            mv transmission_state.csv ${EXP_RESULT_DIR}/multicontext/multicontext_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
             mv tmp.csv ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}.csv
             mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}_infer.log
             mv tmp_train.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}_train.log
