@@ -404,7 +404,7 @@ if __name__ == "__main__":
         if cur_interval == 0:
             # if we have done pretraining already with some model no need to redo it
             if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-                model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"))
+                model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
                 continue
             continue
 

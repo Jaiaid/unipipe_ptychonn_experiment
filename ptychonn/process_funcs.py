@@ -596,7 +596,7 @@ def test_time_constrained(model, teststream, result_fiilup_list, time_limit, dev
         if not next_model_loaded and os.path.exists(os.path.join("/dev/shm", "unipipe_exp_" + str(next_model) + "th_interval_modeltrained")):
             logger.log("MODEL UPDATE TO", next_model)
             print("inference process is swapping model, ", os.path.join(chkpt_dir, "inctrained_interaval{0}_model.pth".format(next_model)))
-            model = torch.load(os.path.join(chkpt_dir, "inctrained_interaval{0}_model.pth".format(next_model)))
+            model = torch.load(os.path.join(chkpt_dir, "inctrained_interaval{0}_model.pth".format(next_model)), weights_only=False)
             model.to(device)
             next_model_loaded = True
             print("total served with prev: ", total_served, " total remaninig:", total_missed)

@@ -113,7 +113,7 @@ def multicontext_inferonly_process(
                 os.path.join(
                     cur_model_dir,
                     multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
-                )
+                ), weights_only=False
             )
             model.to("cuda")
             logger.log("MODEL LOAD TAKES", time.time() - model_load_time)
@@ -216,7 +216,7 @@ if __name__ == "__main__":
         if cur_interval == 0:
             # if we have done pretraining already with some model no need to redo it
             if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-                model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"))
+                model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
                 continue
             continue
 
