@@ -211,10 +211,10 @@ if __name__ == "__main__":
 
 
     # postmortem of data, calculate error
-    amp_error, ph_error = ptychonn.error_calculation.postsimulation_error_calc()
+    amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc()
 
     with open(args.csvlog_file, "w") as fout:
-        # amp error, ph error
-        fout.write("{0},{1}\n".format(amp_error, ph_error))
+        # amp error, ph error, nn amp error, nn ph error
+        fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
 
     logger.persist(args.csvlog_file[:-4] + ".log")

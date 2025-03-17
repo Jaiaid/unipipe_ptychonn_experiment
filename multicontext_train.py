@@ -319,12 +319,4 @@ if __name__ == "__main__":
         # while time.time() - unipipe_time_start < unipipe_time_limit:
         #     pass
 
-
-    # postmortem of data, calculate error
-    amp_error, ph_error = ptychonn.error_calculation.postsimulation_error_calc()
-
-    with open(args.csvlog_file, "w") as fout:
-        # amp error, ph error
-        fout.write("{0},{1}\n".format(amp_error, ph_error))
-
     logger.persist(args.csvlog_file[:-4] + "_train.log")

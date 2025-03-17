@@ -79,7 +79,10 @@ def postsimulation_error_calc() -> Tuple[float, float]:
     # now calculate error for actually inferred data
     mse_amp_errorlist = []
     mse_ph_errorlist = []
-    
+    # for only nn inference error
+    mse_nn_amp_errorlist = []
+    mse_nn_ph_errorlist = []
+
     dataidx = 0
 
     for i in range(Y_I.shape[0]):
@@ -109,12 +112,15 @@ def postsimulation_error_calc() -> Tuple[float, float]:
 
             mse_amp_errorlist.append(mse_amp)
             mse_ph_errorlist.append(mse_ph)
+            mse_nn_amp_errorlist.append(mse_amp)
+            mse_nn_ph_errorlist.append(mse_ph)
         else:
-            mse_amp_errorlist.append(4)
-            mse_ph_errorlist.append(4)
+            # we got this constant from observing spread of data in ground truth
+            mse_amp_errorlist.append(1)
+            mse_ph_errorlist.append(6)
             # mse_amp_errorlist.append(mse(Y_I[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
             # mse_amp_errorlist.append(mse(Y_ph[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
         
         dataidx += 1
 
-    return np.mean(mse_amp_errorlist), np.mean(mse_ph_errorlist)
+    return np.mean(mse_amp_errorlist), np.mean(mse_ph_errorlist), np.mean(mse_nn_amp_errorlist), np.mean(mse_nn_ph_errorlist)
