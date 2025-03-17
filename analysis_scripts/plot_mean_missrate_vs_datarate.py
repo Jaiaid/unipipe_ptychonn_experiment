@@ -51,8 +51,8 @@ if __name__ == "__main__":
                 interval_duration = int(tokens[-3])
                 datarate = int(tokens[-2])
                 deadline_msec = int(tokens[-1])
-            if deadline_msec not in [5 , 10]:
-                continue
+            # if deadline_msec not in [5 , 10]:
+            #     continue
 
             if interval_duration not in data_dict[system]:
                 data_dict[system][interval_duration] = {}

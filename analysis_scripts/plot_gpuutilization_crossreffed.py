@@ -17,8 +17,6 @@ if __name__ == "__main__":
 
     args = argparser.parse_args()
 
-    fig1, ax1 = plot.subplots(figsize=(4, 3))
-
     label = []
     ticklabel = []
 
@@ -71,16 +69,20 @@ if __name__ == "__main__":
             if timestamp not in SYSSTAT_TIMECENTISEC_DATALIST_DICT:
                 SYSSTAT_TIMECENTISEC_DATALIST_DICT[timestamp] = []
 
-            SYSSTAT_TIMECENTISEC_DATALIST_DICT[timestamp].append(float(tokens[4]))
+            SYSSTAT_TIMECENTISEC_DATALIST_DICT[timestamp].append([float(tokens[4]), float(tokens[8])])
     
     # print(SYSSTAT_TIMECENTISEC_DATALIST_DICT)
 
     matched_timeval = []
     gpu_util_mean = []
+    cpu_util_mean = []
     for timeval in timelist:
         if timeval in SYSSTAT_TIMECENTISEC_DATALIST_DICT:
             gpu_util_mean.append(
-                sum(SYSSTAT_TIMECENTISEC_DATALIST_DICT[timeval])/len(SYSSTAT_TIMECENTISEC_DATALIST_DICT[timeval])
+                sum(SYSSTAT_TIMECENTISEC_DATALIST_DICT[timeval][0])/len(SYSSTAT_TIMECENTISEC_DATALIST_DICT[timeval])
+            )
+            cpu_util_mean.append(
+                sum(SYSSTAT_TIMECENTISEC_DATALIST_DICT[timeval][1])/len(SYSSTAT_TIMECENTISEC_DATALIST_DICT[timeval])
             )
             matched_timeval.append(timeval)
             # print(timeval)
@@ -94,6 +96,7 @@ if __name__ == "__main__":
     variant_idx = 0
     # # print(amperror_data_list, amperror_var_data_list)
 
+    fig1, ax1 = plot.subplots(figsize=(4, 3))
     ax1.set_ylabel("GPU Util(%)")
     ax1.set_xlabel("Time (x10 sec.)")
     ax1.plot(matched_timeval, gpu_util_mean, marker='x', label="gpu utilization (%)")
@@ -101,3 +104,14 @@ if __name__ == "__main__":
 
     fig1.savefig("figure_gpuutil_curve_{0}_{1}_{2}_{3}.pdf".format(system, interval_duration, datarate, accumallow),
                  format="pdf", bbox_inches='tight')
+    
+    fig1, ax1 = plot.subplots(figsize=(4, 3))
+    ax1.set_ylabel("CPU Util(%)")
+    ax1.set_xlabel("Time (x10 sec.)")
+    ax1.plot(matched_timeval, cpu_util_mean, marker='x', label="gpu utilization (%)")
+    ax1.legend([plotprop.COMPARED_SYSTEMS_LEGEND_DICT[system] for system in plotprop.COMPARED_SYSTEMS])
+
+    fig1.savefig("figure_cpuutil_curve_{0}_{1}_{2}_{3}.pdf".format(system, interval_duration, datarate, accumallow),
+                 format="pdf", bbox_inches='tight')
+    
+

@@ -53,7 +53,7 @@ if __name__ == "__main__":
                 interval_duration = int(tokens[-3])
                 datarate = int(tokens[-2])
                 deadline_msec = int(tokens[-1])
-            if deadline_msec not in [5 , 10]:
+            if deadline_msec not in [100, 500]:
                 continue
 
             print(filename,tokens)
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     xticklabels = []
     xticks = []
     variant_idx = 0
-    
+    print(data_dict)
     interval_duration_list = sorted(list(data_dict["unipipe"].keys()))
     for interval_duration in interval_duration_list:
         datarate_list = sorted(list(data_dict["unipipe"][interval_duration].keys()))
@@ -105,6 +105,7 @@ if __name__ == "__main__":
             for deadline in deadline_list:
                 for sysidx, system in enumerate(plotprop.COMPARED_SYSTEMS):
                     try:
+                        print(system)
                         handle_dict1[system] = ax1.bar(
                             [variant_idx*2 - sysidx * 0.25],
                             data_dict[system][interval_duration][datarate][deadline][0],

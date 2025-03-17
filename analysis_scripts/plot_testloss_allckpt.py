@@ -104,6 +104,7 @@ if __name__ == "__main__":
 
     ax1.set_ylabel("Loss")
     ax1.set_xlabel("Time (s)")
+    print(timelist, loss_val)
     ax1.plot(timelist, loss_val, marker='x', label="total train loss")
     ax1.plot(timelist, testloss_val[interval_count:], marker='o', label="total test loss")
     for i, t in enumerate(interval_start_timelist):
