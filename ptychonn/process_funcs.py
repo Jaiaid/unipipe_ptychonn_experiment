@@ -194,9 +194,10 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
     train_start_time = time.time()
     # to control when the training of current interval will stop
     previous_loss = 0
-    # training does not start on start of interval
-    # we wait until half of interval (an emulation of delay in generating new training data)
-    stop_train = True
+    # # training does not start on start of interval
+    # # we wait until half of interval (an emulation of delay in generating new training data)
+    # stop_train = True
+    stop_train = False
 
     # arbitrary large epoch, for coding ease in tracking an epoch
     # actual breaking condition is on time limit and loss
@@ -344,20 +345,22 @@ def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, res
                     negative_train_batchsize_count = 0
                 total_train_iter_count += 1
 
+                iter_end_timestamp = time.time()
                 logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
+            else:
+                iter_end_timestamp = time.time()
 
             total_iter_count += 1
-            iter_end_timestamp = time.time()
             logger.log("ITERATION TAKES(sec.)", iter_end_timestamp - iteration_start_time)
             iteration_time += iter_end_timestamp - iteration_start_time
 
             if traindata_start_idx >= len(trainloader.dataset):
-                logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1)
+                logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1, traindata_start_idx, len(trainloader.dataset))
                 break
 
-            if stop_train and time.time() - start_time > time_limit/2:
-                logger.log("HALF INTERVAL OVER TRAIN WILL RESUME")
-                stop_train = False
+            # if stop_train and time.time() - start_time > time_limit/2:
+            #     logger.log("HALF INTERVAL OVER TRAIN WILL RESUME")
+            #     stop_train = False
 
         if not stop_train:
             update_saved_model(model=model, path="/dev/shm/", name="{0}_e{1}.pth".format(chkpt_path[:-4], cur_epoch))
