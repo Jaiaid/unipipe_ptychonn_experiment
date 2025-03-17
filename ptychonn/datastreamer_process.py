@@ -160,8 +160,8 @@ if __name__=="__main__":
     print("Total Transmitted Data: {0}".format(current_transmit_idx))
     print("Consumed: {0}".format(consumed))
     print("Missed: {0}".format(missed))
-    print("Consumed Non pretrained: {0}".format(consumed))
-    print("Missed Non pretrained: {0}".format(missed))
+    print("Consumed Non pretrained: {0}".format(consumed_nonpretrained))
+    print("Missed Non pretrained: {0}".format(missed_nonpretrained))
     print("Total Transmission Time: {0}s".format(transmission_end_time - start_timestamp))
     total_time = time.time() - start_timestamp
     print("Total Time: {0}s".format(total_time))
