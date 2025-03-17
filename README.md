@@ -17,6 +17,9 @@ We assume that it is inside Linux and ``/dev/shm`` is available for shared memor
 1. Clone the **PtychoNN** repository
 ```
 git clone https://github.com/mcherukara/PtychoNN
+cd PtychoNN
+git-lfs install
+git-lfs pull
 ```
 
 2. Relative to **PtychoNN** repo. root, change directory to PyTorch and clone this repository in that folder. Change to the **stream_train_infer_impl** branch
