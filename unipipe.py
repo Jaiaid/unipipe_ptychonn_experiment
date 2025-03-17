@@ -96,8 +96,8 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     time_ub = None
 
     iter_creation_start_time = time.time()
-    print("iterator creation time:", time.time() - iter_creation_start_time)
-    print("intialization time:", time.time() - interval_init_time)
+    # print("iterator creation time:", time.time() - iter_creation_start_time)
+    # print("intialization time:", time.time() - interval_init_time)
 
     train_start_time = time.time()
     # to control when the training of current interval will stop
@@ -122,7 +122,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             logger.log("UNIPIPE EPOCH END TIMELIMIT OVER", cur_epoch + 1)
             break
 
-        print("Epoch count:", cur_epoch)
+        # print("Epoch count:", cur_epoch)
 
         traindata_start_idx = 0
         time_uf = None
@@ -147,7 +147,8 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             if not stop_train:
                 train_batch = trainloader.read(bs=ideal_train_batchsize)
                 if train_batch[0] is None:
-                    return None, None, None, None, None
+                    logger.log("TRAIN READ FAILED, STOPPED TRAIN")
+                    stop_train = True
 
             # some infer data is there, merge and pass to context
             # or training is done now to pass only infer data to context
@@ -425,8 +426,12 @@ if __name__ == "__main__":
 
         # calculate number of epoch to run the unipipe train
         # it depends on some value which are unknown initially for that we just set an arbitrary value
-        if nn_uf is None:
-            epoch_count = 1000000
+        if nn_uf is None or nn_ub is None:
+            # need one epoch to count the times
+            epoch_count = 1
+        elif trainsize == 0:
+            # if no training data just run an epoch but that will only consume inference data
+            epoch_count = 1
         else:
             # from performance model
             epoch_count = int(round((unipipe_time_limit - nn_uf*infersize)/((nn_uf + nn_ub) * trainsize)))
@@ -448,11 +453,11 @@ if __name__ == "__main__":
 
 
     # postmortem of data, calculate error
-    amp_error, ph_error = ptychonn.error_calculation.postsimulation_error_calc()
+    amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc()
 
     with open(args.csvlog_file, "w") as fout:
-        # amp error, ph error
-        fout.write("{0},{1}\n".format(amp_error, ph_error))
+        # amp error, ph error, nn amp error, nn ph error
+        fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
 
     logger.persist(args.csvlog_file[:-4] + ".log")
 
