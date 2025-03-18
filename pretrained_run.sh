@@ -14,6 +14,7 @@ c=$1
 dur=$2
 rate=$3
 deadlinemsec=$4
+skipline=$5
 
 rm /dev/shm/unipipe_exp*
 rm model_multicontext/inctrained_interaval*
@@ -24,7 +25,7 @@ rm /dev/shm/*_fastlog.log
 
 EXP_SCRIPT=pretrained.py
 
-python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
+python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -csvlog tmp.csv &
 PRETRAIN_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

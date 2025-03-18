@@ -74,14 +74,14 @@ def get_dataset(datarate, deadline, overrideratio=None, IPR_throughput=None):
             "test": (X_test, Y_I_test, Y_phi_test)}
 
 
-def get_gtdata() -> np.ndarray:
+def get_gtdata(skip_line=0) -> np.ndarray:
     ground_truth_data = np.load(parameters.REAL_SPACE_PATH)
     ground_truth_amp = np.abs(ground_truth_data)
     ground_truth_ph = np.angle(ground_truth_data)
 
     # we will generate the data array by reading each line from ground truth amp. and phase data
-    for i in range(parameters.DIFFRLINE):
-        if i == 0:
+    for i in range(skip_line, parameters.DIFFRLINE):
+        if i == skip_line:
             Y_I = ground_truth_amp[i, :].reshape(-1,parameters.H,parameters.W)
             Y_phi = ground_truth_ph[i, :].reshape(-1,parameters.H,parameters.W)
         else:

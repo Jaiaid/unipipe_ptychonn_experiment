@@ -22,14 +22,16 @@ import parameters
 
 from skimage.transform import resize
 
-def get_diffrdata() -> np.ndarray:
+def get_diffrdata(skip_line=0) -> np.ndarray:
     diffr_data = np.load(parameters.DATA_DIFFR_PATH)["arr_0"]
 
-    diffr_data_red = np.zeros((diffr_data.shape[0],diffr_data.shape[1],64,64), np.float32)
+    diffr_data_red = np.zeros((diffr_data.shape[0]-skip_line,diffr_data.shape[1],64,64), np.float32)
     for i in range(1, diffr_data.shape[0]):
+        if i < skip_line:
+            continue
         for j in range(diffr_data.shape[1]):
-            diffr_data_red[i,j] = resize(diffr_data[i,j,32:-32,32:-32],(64,64),preserve_range=True, anti_aliasing=True)
-            diffr_data_red[i,j] = np.where(diffr_data_red[i,j]<3,0,diffr_data_red[i,j])
+            diffr_data_red[i-skip_line,j] = resize(diffr_data[i,j,32:-32,32:-32],(64,64),preserve_range=True, anti_aliasing=True)
+            diffr_data_red[i-skip_line,j] = np.where(diffr_data_red[i,j]<3,0,diffr_data_red[i,j])
 
     return diffr_data_red
 
@@ -61,12 +63,14 @@ if __name__=="__main__":
     parser.add_argument("--rate", "-r", type=float, help="at which rate (Hz/s^-1) new data will be created")
     parser.add_argument("--deadline-msec", "-dmsec", type=float, help="after how many millisecond a data file in shm will be removed")
     parser.add_argument("--no-sync", "-nsync", action="store_true", help="no synchronization with consumer, needed if run independently")
+    parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     parser.add_argument("--debug-log", "-debug", action="store_true", help="debug message print")
+
 
     args = parser.parse_args()
 
     # diffr data will be 64x64 for each probe point in a 161x161 probe field
-    diffr_data = get_diffrdata()
+    diffr_data = get_diffrdata(skip_line=args.skip_line_pretrained)
     total_image_count = diffr_data.shape[0] * diffr_data.shape[1]
 
     # transmission state
@@ -88,8 +92,7 @@ if __name__=="__main__":
         consumer_init_wait()
     # indicate start of activity
     print("starting transmission", time.time())
-    if not args.no_sync:
-        signal_consumer()
+    signal_consumer()
 
     start_timestamp = time.time()
     data_interval_start_timestamp = start_timestamp

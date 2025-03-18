@@ -157,6 +157,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--inferbs", "-inferbs", type=int, default=ptychonn.parameters.INFERENCE_BATCH_SIZE,  help="if constant inference batch size will be used what will be the value")
     arg_parser.add_argument("--trainbs", "-trainbs", type=int, default=ptychonn.parameters.TRAIN_BATCH_SIZE, help="if constant train batch size will be used what will be the value")
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
+    arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     # get the arguments
     args = arg_parser.parse_args()
 
@@ -168,6 +169,11 @@ if __name__ == "__main__":
 
     # init the model
     model = ptychonn.model.recon_model()
+    if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
+        model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+    else:
+        print("Pretrained Model Not Found...Exiting")
+        exit()
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
     infer_datareader.set_len(args.datarate * args.interval_duration)
@@ -179,12 +185,16 @@ if __name__ == "__main__":
     # training state controller variable initiation
     start_time = time.time()
     cur_ipriteration = 0
-    cur_interval = 0
+    cur_interval = 1
     current_time = start_time
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
-    total_runtime = args.interval_count * deadline_sec
+    # first interval data is used to pretrain the model
+    total_runtime = (args.interval_count - 1) * deadline_sec
     total_consumed = 0
+
+    # to give producer time to put first data
+    time.sleep(1/args.acquisition_rate)
 
     logger.log("INTERVAL START {0}".format(cur_interval + 1))
     while current_time - start_time < total_runtime:
@@ -212,14 +222,6 @@ if __name__ == "__main__":
             infer_datareader.reposition()
             # print("first infer data selection takes {0}s".format(time.time() - t1))
 
-        # pretrain stage
-        if cur_interval == 0:
-            # if we have done pretraining already with some model no need to redo it
-            if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-                model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
-                continue
-            continue
-
         # put unipipe traininfer for one ipriteration data here
         metrics, consumed = multicontext_inferonly_process(
             model, infer_datareader, 
@@ -234,7 +236,7 @@ if __name__ == "__main__":
         #     pass
 
     # postmortem of data, calculate error
-    amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc()
+    amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(skip_line=args.skip_line_pretrained)
 
     with open(args.csvlog_file, "w") as fout:
         # amp error, ph error, nn amp error, nn ph error

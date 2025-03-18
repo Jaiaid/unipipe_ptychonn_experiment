@@ -9,14 +9,14 @@ import ipc
 import parameters
 
 
-def get_gtdata() -> np.ndarray:
+def get_gtdata(skip_line=0) -> np.ndarray:
     ground_truth_data = np.load(parameters.REAL_SPACE_PATH)
     ground_truth_amp = np.abs(ground_truth_data)
     ground_truth_ph = np.angle(ground_truth_data)
 
     # we will generate the data array by reading each line from ground truth amp. and phase data
-    for i in range(parameters.DIFFRLINE):
-        if i == 0:
+    for i in range(skip_line, parameters.DIFFRLINE):
+        if i == skip_line:
             Y_I = ground_truth_amp[i, :].reshape(-1,parameters.H,parameters.W)
             Y_phi = ground_truth_ph[i, :].reshape(-1,parameters.H,parameters.W)
         else:
@@ -67,14 +67,15 @@ if __name__=="__main__":
     parser.add_argument("--acquisition-rate", "-ar", type=float, help="at which rate (Hz/s^-1) new data will be coming")
     parser.add_argument("--generation-rate", "-gr", type=float, help="at which rate (Hz/s^-1) new ground truth will be generated")
     parser.add_argument("--deadline-msec", "-d", type=float, help="after how many millisecond a data file in shm will be removed, also determines interval length")
+    parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     parser.add_argument("--interval-count", "-icount", type=int, help="how many interval to run for")
     parser.add_argument("--interval-one-oracle", "-i", action="store_true", help="first interval all ground truth data will be made available")
-
+    
     args = parser.parse_args()
 
     # ground truth data will be 161x161 (parameters.DIFFRLINE X parameters.DIFFRLINE) 
     # for each probe point in a 161x161 probe field we will have ground truth of 64x64 (parameters.H X parameters.W)
-    gt_data_i, gt_data_ph = get_gtdata()
+    gt_data_i, gt_data_ph = get_gtdata(skip_line=args.skip_line_pretrained)
     total_data = gt_data_i.shape[0] * gt_data_i.shape[1]
 
     # generation state
