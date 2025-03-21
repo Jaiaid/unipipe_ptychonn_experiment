@@ -132,9 +132,12 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             loss.backward()
             optimizer.step()
 
-            tot_loss += loss.detach().item()
-            loss_amp += loss_a.detach().item()
-            loss_ph += loss_p.detach().item()
+            l_a = loss_a.detach().item()
+            l_p = loss_p.detach().item()
+            loss_amp += l_a
+            loss_ph += l_p
+            tot_loss += l_a + l_p
+            logger.log("ITER_COUNT, TRAIN LOSS", total_iter_count, l_a + l_p, l_a, l_p)
 
             scheduler.step() 
             metrics['lrs'].append(scheduler.get_last_lr())
@@ -230,6 +233,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
     arg_parser.add_argument("--inffrac", "-inffrac", type=float, default=1.0, help="how much factor to multiply with infer bs")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
+
     # get the arguments
     args = arg_parser.parse_args()
 
@@ -297,25 +301,25 @@ if __name__ == "__main__":
         # start of unipipe initiation and call
         ipr_training_time_start = time.time()
         
-        unipipe_time_limit = args.ipr_throughput * deadline_sec / args.datarate
-        trainsize = int(round(unipipe_time_limit * args.ipr_throughput))
+        ipriter_time_limit = args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
+        trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
         epoch_count = ptychonn.parameters.EPOCHS
 
         # log the performance model related states
         logger.log(
             "CURIPRITERATION,TIME_LIMIT,TRAIN_SIZE",
-            cur_ipriteration, unipipe_time_limit, trainsize)
+            cur_ipriteration, ipriter_time_limit, trainsize)
 
         # put unipipe traininfer for one ipriteration data here
         metrics, epoch_count = multicontext_train(
             model, train_datareader, epoch_count=epoch_count,
             trainbs=trainbs, datarate=args.datarate, deadline_sec=deadline_sec,
             chkpt_dir=multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration),
-            logger=logger, time_limit=unipipe_time_limit)
+            logger=logger, time_limit=ipriter_time_limit)
         # log how much ipr iteration matches with unipipe iteration
         logger.log(
             "CURIPRITERATION,EPOCH,TIME_LIMIT,ACTUAL_TIME", 
-            cur_ipriteration, epoch_count, unipipe_time_limit, time.time() - ipr_training_time_start)
+            cur_ipriteration, epoch_count, ipriter_time_limit, time.time() - ipr_training_time_start)
 
         # busy wait until time is passed
         # while time.time() - unipipe_time_start < unipipe_time_limit:
