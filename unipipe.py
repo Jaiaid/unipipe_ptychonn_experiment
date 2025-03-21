@@ -89,10 +89,11 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     # if epochs are finished or convergence happen we stop train but inference continues
     stop_train = False
 
-    # arbitrary large epoch, for coding ease in tracking an epoch
     # actual breaking condition is on time limit and loss
-    for cur_epoch in range(epoch_count):
-        logger.log("UNIPIPE EPOCH BEGIN", cur_epoch + 1)
+    cur_epoch = 0
+    while total_consumed < len(teststream) or cur_epoch < epoch_count:
+        cur_epoch += 1
+        logger.log("UNIPIPE EPOCH BEGIN", cur_epoch)
 
         tot_loss = 0.0
         loss_amp = 0.0
@@ -103,9 +104,6 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 
         # to get iteration time
         iteration_time = 0
-        if time_limit is not None and time.time() - start_time > time_limit:
-            logger.log("UNIPIPE EPOCH END TIMELIMIT OVER", cur_epoch + 1)
-            break
 
         while time_limit is not None and time.time() - start_time < time_limit:
             logger.log("UNIPIPE ITERATION START", total_iter_count)
@@ -120,7 +118,6 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                     if infer_batch is None:
                         continue
                     infer_count = infer_batch.shape[0]
-                    total_consumed += infer_count
                     inference_iter_count += 1
                 except Exception as e:
                     print(e)
@@ -131,7 +128,8 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 if train_batch[0] is None:
                     logger.log("TRAIN READ FAILED, STOPPED TRAIN")
                     stop_train = True
-                train_consumed += train_batch[0].shape[0]
+                else:
+                    train_consumed += train_batch[0].shape[0]
 
             # some infer data is there, merge and pass to context
             # or training is done now to pass only infer data to context
@@ -156,7 +154,9 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
                 pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
                 # print(pred_amps.shape, pred_phs.shape)
-                for i in range(infer_count):
+                if infer_count != len(inferidxlist):
+                    print(infer_count != len(inferidxlist), infer_count, len(inferidxlist))
+                for i in range(len(inferidxlist)):
                     ptychonn.ipc.create_shm_data(
                         os.path.join(
                             ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
@@ -174,7 +174,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - iteration_start_time)
             total_missed += missed
-            total_consumed += consumed
+            total_consumed += infer_count
 
             # for ideal train batch size calculation
             time_uf = (forward_pass_done_time -  forward_pass_arrival_time)/ft_images.shape[0]
@@ -221,7 +221,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             iteration_time += iter_end_timestamp - iteration_start_time
 
             if train_consumed >= len(trainloader):
-                logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1, len(trainloader))
+                logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch, len(trainloader))
                 break
 
         if not stop_train:
@@ -237,18 +237,22 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             if abs(tot_loss/(total_train_iter_count + 1) - previous_loss) <= ptychonn.parameters.LOSS_CHANGE_MIN_THRESHOLD:
                 stop_train = True
                 logger.log("UNIPIPE TRAINING STOP CONVERGENCE")
-                interval_remaining_time = time.time() - interval_init_time
+                interval_remaining_time = (time.time() - interval_init_time) - time_limit
                 logger.log("UNIPIPE INTERVAL REM. TIME", interval_remaining_time)
             previous_loss = tot_loss/(total_train_iter_count + 1)
 
         logger.log("UNIPIPE ITER. TIME", iteration_time/(total_iter_count + 1))
-        logger.log("UNIPIPE EPOCH END", cur_epoch + 1)
-        if cur_epoch + 1 == epoch_count:
+        logger.log("UNIPIPE EPOCH END", cur_epoch)
+        if cur_epoch == epoch_count:
             stop_train = True
             logger.log("MAX EPOCH DONE")
 
     if total_consumed >= len(infer_datareader):
         logger.log("ALL INFER DATA CONSUMED")
+
+    if time_limit is not None and time.time() - start_time > time_limit:
+        logger.log("UNIPIPE TIMELIMIT OVER", cur_epoch)
+
 
     logger.log("UNIPIPE TRAINING TAKES", time.time() - train_start_time)
     logger.log("UNIPIPE TOTAL TIME:", time.time() - start_time)
@@ -350,12 +354,6 @@ if __name__ == "__main__":
             cur_ipriteration += 1
             logger.log("IPR ITERATION START", cur_ipriteration)
 
-            # update the current inference idx and training data idx
-            # the files are named in such a way that
-            # t1 = time.time()
-            infer_datareader.reposition()
-            # print("first infer data selection takes {0}s".format(time.time() - t1))
-
             # t1 = time.time()
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
             train_datareader.reposition()
@@ -377,6 +375,8 @@ if __name__ == "__main__":
         unipipe_time_limit = args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
         trainsize = int(round(unipipe_time_limit * args.ipr_throughput))
         infersize = int(round(unipipe_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+        # for inference location on datastream repositioning
+        infer_datareader.cur_readidx  = train_datareader.cur_readidx_begin - infersize + 1
         # set the reader length for the unipipe call
         infer_datareader.set_len(infersize)
 
