@@ -17,14 +17,15 @@ c=$1
 dur=$2
 rate=$3
 deadlinemsec=$4
+skipline=$5
 
-if [ $# -ge 5 -a $5 != "None" ];then
-    iprrate=$5
+if [ $# -ge 6 -a $6 != "None" ];then
+    iprrate=$6
     IPRRATE="-iprt "${iprrate}
     echo $IPRRATE
 fi
 
-if [ $# -eq 6 ];then
+if [ $# -eq 7 ];then
     BSARG="-bs "${bs}
     echo $BSARG
 fi
@@ -39,7 +40,7 @@ rm /dev/shm/*_fastlog.log
 python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv &
 TRAIN_PID=$!
 
-python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} $BSARG -csvlog tmp.csv &
+python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $BSARG -csvlog tmp.csv &
 INFER_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &
