@@ -58,11 +58,13 @@ class SHMInferDataReader():
                 ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
                 consumed += 1
                 dataidx_list.append(self.cur_readidx)
+                self.cur_readidx += 1
             except FileNotFoundError:
                 missed += 1
+                self.reposition()
             except Exception as e:
+                self.reposition()
                 pass
-            self.cur_readidx += 1
 
         return ara, consumed, missed, dataidx_list
     
