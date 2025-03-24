@@ -59,15 +59,13 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     # print("training mechanism creation takes ", time.time() - init_time)
     # to store training related metrics
     metrics = {"lrs": [], "losses": [], "val_losses": [], "best_val_loss": math.inf}
-    # for training batch size control
-    train_dataset_size = len(trainloader) 
 
     # for loss measure and some stats
     total_iter_count = 0
 
-    iter_creation_start_time = time.time()
-    print("iterator creation time:", time.time() - iter_creation_start_time)
-    print("intialization time:", time.time() - interval_init_time)
+    # iter_creation_start_time = time.time()
+    # print("iterator creation time:", time.time() - iter_creation_start_time)
+    # print("intialization time:", time.time() - interval_init_time)
 
     train_start_time = time.time()
     # to control when the training of current interval will stop
@@ -75,6 +73,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     # if epochs are finished or convergence happen we stop train but inference continues
     stop_train = False
     next_model = 0
+    total_traindata_consumed = 0
 
     # arbitrary large epoch, for coding ease in tracking an epoch
     # actual breaking condition is on time limit and loss
@@ -85,22 +84,20 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
         loss_amp = 0.0
         loss_ph = 0.0
         total_iter_count = 0
+        epoch_consumed = 0
 
         # to get iteration time
         iteration_time = 0
         if time_limit is not None and time.time() - start_time > time_limit or stop_train:
-            logger.log("MULTICONTEXT TRAIN EPOCH END", cur_epoch)
+            logger.log("MULTICONTEXT TRAIN EPOCH END DUE TO TIME LIMIT", cur_epoch + 1)
             break
 
-        print("Epoch count:", cur_epoch)
 
-        traindata_start_idx = 0
-
-        while time_limit is not None and time.time() - start_time < time_limit:
-            logger.log("MULTICONTEXT TRAIN ITERATION START", total_iter_count)
+        while time_limit is not None and time.time() - start_time < time_limit and epoch_consumed < len(trainloader):
+            logger.log("MULTICONTEXT TRAIN ITERATION START", total_iter_count, trainbs, len(trainloader) - epoch_consumed, len(trainloader))
             iteration_start_time = time.time()
             
-            train_batch = trainloader.read(bs=trainbs)
+            train_batch = trainloader.read(bs=min(trainbs, len(trainloader) - epoch_consumed))
             if train_batch[0] is None:
                 continue
 
@@ -109,7 +106,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             # or no infer data is in pipeline for now, so only training
             ft_images = torch.tensor(train_batch[0]).to("cuda")
 
-            logger.log("MULTICONTEXT TRAIN BS", trainbs)
+            logger.log("MULTICONTEXT TRAIN BS", train_batch[0].shape[0])
             # Forward pass
             pred_amps, pred_phs = model(ft_images) 
             forward_pass_done_time = time.time()
@@ -137,24 +134,37 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             loss_amp += l_a
             loss_ph += l_p
             tot_loss += l_a + l_p
-            logger.log("ITER_COUNT, TRAIN LOSS", total_iter_count, l_a + l_p, l_a, l_p)
-
-            scheduler.step() 
-            metrics['lrs'].append(scheduler.get_last_lr())
+            scheduler.step()
 
             iter_end_timestamp = time.time()
             logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
 
+            metrics['lrs'].append(scheduler.get_last_lr())
+            logger.log("ITER_COUNT, TRAIN LOSS", total_iter_count, l_a + l_p, l_a, l_p)
+
             total_iter_count += 1
             logger.log("ITERATION TAKES(sec.)", iter_end_timestamp - iteration_start_time)
             iteration_time += iter_end_timestamp - iteration_start_time
+            epoch_consumed += train_batch[0].shape[0]
 
-            if traindata_start_idx >= len(trainloader):
-                logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1, traindata_start_idx, len(trainloader))
-                break
+        logger.log("TRAINDATASET CONSUMED AT EPOCH", cur_epoch + 1, epoch_consumed, len(trainloader))
+        total_traindata_consumed += epoch_consumed
+
+        #Divide cumulative loss by number of batches-- sli inaccurate because last batch is different size
+        metrics['losses'].append([tot_loss/(total_iter_count + 1),loss_amp/(total_iter_count + 1),loss_ph/(total_iter_count + 1)])
+        logger.log("TRAINING LOSS AT EPOCH", cur_epoch, tot_loss/(total_iter_count + 1),loss_amp/(total_iter_count + 1),loss_ph/(total_iter_count + 1))
+        
+        # update flag to stop training if training brings out minimal improvement
+        # this condition needed because it is possible in current epoch not a single training is run
+        if abs(previous_loss - tot_loss/(total_iter_count + 1)) < ptychonn.parameters.LOSS_CHANGE_MIN_THRESHOLD:
+            stop_train = True
+            logger.log("MULTICONTEXT TRAIN STOP CONVERGENCE")
+            interval_remaining_time = time.time() - interval_init_time
+            logger.log("MULTICONTEXT TRAIN INTERVAL REM. TIME", interval_remaining_time)
 
         # save model if loss is lower than before
-        if tot_loss / (total_iter_count + 1) < previous_loss:
+        # if tot_loss / (total_iter_count + 1) < previous_loss:
+        if True:
             ptychonn.process_funcs.update_saved_model(
                 model=model,
                 path=os.path.join(
@@ -173,18 +183,6 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             next_model += 1
             previous_loss = tot_loss/(total_iter_count + 1)
 
-        #Divide cumulative loss by number of batches-- sli inaccurate because last batch is different size
-        metrics['losses'].append([tot_loss/(total_iter_count + 1),loss_amp/(total_iter_count + 1),loss_ph/(total_iter_count + 1)])
-        logger.log("TRAINING LOSS AT EPOCH", cur_epoch, tot_loss/(total_iter_count + 1),loss_amp/(total_iter_count + 1),loss_ph/(total_iter_count + 1))
-        
-        # update flag to stop training if training brings out minimal improvement
-        # this condition needed because it is possible in current epoch not a single training is run
-        if previous_loss - tot_loss/(total_iter_count + 1) <= ptychonn.parameters.LOSS_CHANGE_MIN_THRESHOLD:
-            stop_train = True
-            logger.log("MULTICONTEXT TRAIN STOP CONVERGENCE")
-            interval_remaining_time = time.time() - interval_init_time
-            logger.log("MULTICONTEXT TRAIN INTERVAL REM. TIME", interval_remaining_time)
-
         logger.log("MULTICONTEXT TRAIN ITER. TIME", iteration_time/(total_iter_count + 1))
         logger.log("MULTICONTEXT TRAIN EPOCH END", cur_epoch + 1)
         if cur_epoch + 1 == epoch_count:
@@ -192,6 +190,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             logger.log("MAX EPOCH DONE, NO TRAINING IN CURRENT INTERVAL")
 
     logger.log("MULTICONTEXT TRAIN TAKES", time.time() - train_start_time)
+    logger.log("MULTICONTEXT TRAIN CONSUME", total_traindata_consumed)
     logger.log("MULTICONTEXT TRAIN TOTAL TIME:", time.time() - start_time)
 
     return metrics, cur_epoch

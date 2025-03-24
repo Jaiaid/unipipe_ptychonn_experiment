@@ -51,13 +51,13 @@ def multicontext_inferonly_process(
     next_model = 0
     iteration_start_time = time.time()
     
-    while time.time() - start_time < time_limit:
+    while time.time() - start_time < time_limit and total_consumed < len(teststream):
         logger.log("MULTICONTEXT ITERATION START", total_iter_count)
         # first take from test
         infer_count = 0
 
         try:
-            infer_batch, consumed, missed, inferidxlist = teststream.read(bs=inferbs)
+            infer_batch, consumed, missed, inferidxlist = teststream.read(bs=min(inferbs, len(teststream) - total_consumed))
             if infer_batch is None:
                 continue
             infer_count = infer_batch.shape[0]
@@ -77,7 +77,9 @@ def multicontext_inferonly_process(
         pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
         pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
         # print(pred_amps.shape, pred_phs.shape)
-        for i in range(infer_count):
+        if infer_count != len(inferidxlist):
+            print(infer_count, len(inferidxlist))
+        for i in range(len(inferidxlist)):
             ptychonn.ipc.create_shm_data(
                 os.path.join(
                     ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
@@ -94,7 +96,6 @@ def multicontext_inferonly_process(
             )
         # update total missed count
         logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
-        total_consumed += consumed
         total_iter_count += 1
         # busy wait to ensure enough data accumulated
         # while ptychonn.parameters.INFERENCE_BATCH_SIZE/datarate > time.time() - iteration_start_time:
@@ -107,8 +108,8 @@ def multicontext_inferonly_process(
             os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model))):
             cur_model_dir = os.path.join("/dev/shm", chkpt_dir)
 
-            logger.log("MODEL UPDATE TO", next_model)
-            print("inference process is swapping model, ", os.path.join(cur_model_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
+            logger.log("MODEL UPDATE TO", chkpt_dir, next_model)
+            # print("inference process is swapping model, ", os.path.join(cur_model_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
             model = torch.load(
                 os.path.join(
                     cur_model_dir,
@@ -156,6 +157,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--constant-bs", "-constbs", action="store_true", help="if constant batch size will be used")
     arg_parser.add_argument("--inferbs", "-inferbs", type=int, default=ptychonn.parameters.INFERENCE_BATCH_SIZE,  help="if constant inference batch size will be used what will be the value")
     arg_parser.add_argument("--trainbs", "-trainbs", type=int, default=ptychonn.parameters.TRAIN_BATCH_SIZE, help="if constant train batch size will be used what will be the value")
+    arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
     arg_parser.add_argument("--allckpttest", "-ckpttest", action="store_true", help="if all checkpoints will be saved and tested with inference data")
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
@@ -214,14 +216,26 @@ if __name__ == "__main__":
         # as IPR will keep running for data from interval 0 also (for which model is already trained)
         # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
         # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
+        ipr_iteration_time_start = time.time()
+
         if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
             cur_ipriteration += 1
             logger.log("IPR ITERATION START", cur_ipriteration)
             # update the current inference idx and training data idx
             # the files are named in such a way that
             # t1 = time.time()
-            infer_datareader.reposition()
+            # infer_datareader.reposition()
             # print("first infer data selection takes {0}s".format(time.time() - t1))
+            unipipe_time_limit = args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
+            trainsize = int(round(unipipe_time_limit * args.ipr_throughput))
+            infersize = int(round(unipipe_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+            # for inference location on datastream repositioning
+            train_readidx_curpos = cur_ipriteration*(trainsize + infersize - 1)
+            logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)
+            infer_datareader.cur_readidx = train_readidx_curpos - infersize + 1
+            infer_datareader.set_len(infersize)
+        else:
+            continue
 
         # put unipipe traininfer for one ipriteration data here
         metrics, consumed = multicontext_inferonly_process(
@@ -233,8 +247,8 @@ if __name__ == "__main__":
         # log how much ipr iteration matches with unipipe iteration
 
         # busy wait until time is passed
-        # while time.time() - unipipe_time_start < unipipe_time_limit:
-        #     pass
+        while time.time() - ipr_iteration_time_start < unipipe_time_limit:
+            pass
 
     # postmortem of data, calculate error
     amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(skip_line=args.skip_line_pretrained)
