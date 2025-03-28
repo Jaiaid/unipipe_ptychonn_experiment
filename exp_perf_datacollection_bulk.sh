@@ -98,7 +98,8 @@ for c in $INTERVAL_COUNT;do
             mv transmission_state.csv ${EXP_RESULT_DIR}/pretrained/pretrained_transmission_state_${c}_${dur}_${rate}_${iprt}.csv
             mv tmp.csv ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${iprt}.csv
             mv tmp.log ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${dur}_${rate}_${iprt}.log
-            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained/pretrained_sysstat_${c}_${dur}_${rate}_${iprt}.csv 
+            mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained/pretrained_sysstat_${c}_${dur}_${rate}_${iprt}.csv
+            mv /dev/shm/inferdatalist_pretrained_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/pretrained/inferdatalist_pretrained_${c}_${dur}_${rate}_${iprt}.csv
         done
         rate=$(($rate*2))
     done
@@ -146,6 +147,8 @@ for c in $INTERVAL_COUNT;do
             mv tmp.csv ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${iprt}.csv
             mv tmp.log ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${dur}_${rate}_${iprt}.log
             mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${dur}_${rate}_${iprt}.csv
+            mv /dev/shm/traindatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/traindatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv
+            mv /dev/shm/inferdatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/inferdatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv
         done
         rate=$(($rate*2))
     done
@@ -174,7 +177,7 @@ for c in $INTERVAL_COUNT;do
             IPR_PROCESS_PID=$!
             echo $IPR_PROCESS_PID
 
-            bash multicontext_run.sh $c $dur $rate $deadlinemsec $iprt $SKIPLINE
+            bash multicontext_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt
             set +x
             while ps -p ${STREAM_PROCESS_PID} > /dev/null
             do
@@ -196,6 +199,8 @@ for c in $INTERVAL_COUNT;do
             mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}_infer.log
             mv tmp_train.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${dur}_${rate}_${iprt}_train.log
             mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${dur}_${rate}_${iprt}.csv
+            mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv
+            mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv
         done
         rate=$(($rate*2))
     done
