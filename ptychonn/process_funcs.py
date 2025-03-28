@@ -610,7 +610,8 @@ def update_saved_model(model, path, name, logger=None):
     if not os.path.isdir(path):
         os.mkdir(path)
     if logger is None:
-        print("save model in ", os.path.join(path, name))
+        pass
+        # print("save model in ", os.path.join(path, name))
     else:
         logger.log("SAVE CHKPT ", os.path.join(path, name))
     torch.save(model, os.path.join(path, name))
