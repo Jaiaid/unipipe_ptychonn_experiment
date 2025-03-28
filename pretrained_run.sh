@@ -16,10 +16,12 @@ rate=$3
 deadlinemsec=$4
 skipline=$5
 
+set +x
 rm /dev/shm/unipipe_exp*
 rm model_multicontext/inctrained_interaval*
 rm /dev/shm/inctrained*
 rm /dev/shm/*_fastlog.log
+set -x
 
 # deadlinemsec=$((1000*$accumulationallow/$rate))
 

@@ -30,10 +30,13 @@ if [ $# -eq 7 ];then
     echo $BSARG
 fi
 
+echo "Deleting data from /dev/shm"
+set +x
 rm /dev/shm/unipipe_exp*
 rm model_multicontext/inctrained_interaval*
 rm /dev/shm/inctrained*
 rm /dev/shm/*_fastlog.log
+set -x
 
 # deadlinemsec=$((1000*$accumulationallow/$rate))
 
