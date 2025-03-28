@@ -109,7 +109,7 @@ if __name__=="__main__":
     # to give producer time to put first data
     time.sleep(1/args.acquisition_rate)
     # for cur_interval in range():#(args.interval_count):
-    while current_timestamp - start_timestamp < (args.interval_count * deadline_sec):
+    while current_timestamp - start_timestamp < ((args.interval_count -1) * deadline_sec):
         cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
         ipc.create_shm_folder(cur_folder)
 
