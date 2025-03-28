@@ -26,12 +26,10 @@ def get_diffrdata(skip_line=0) -> np.ndarray:
     diffr_data = np.load(parameters.DATA_DIFFR_PATH)["arr_0"]
 
     diffr_data_red = np.zeros((diffr_data.shape[0]-skip_line,diffr_data.shape[1],64,64), np.float32)
-    for i in range(1, diffr_data.shape[0]):
-        if i < skip_line:
-            continue
+    for i in range(skip_line, diffr_data.shape[0]):
         for j in range(diffr_data.shape[1]):
-            diffr_data_red[i-skip_line,j] = resize(diffr_data[i,j,32:-32,32:-32],(64,64),preserve_range=True, anti_aliasing=True)
-            diffr_data_red[i-skip_line,j] = np.where(diffr_data_red[i,j]<3,0,diffr_data_red[i,j])
+            diffr_data_red[i-skip_line,j] = resize(diffr_data[i, j,32:-32,32:-32],(64,64),preserve_range=True, anti_aliasing=True)
+            diffr_data_red[i-skip_line,j] = np.where(diffr_data_red[i-skip_line,j]<3,0,diffr_data_red[i-skip_line,j])
 
     return diffr_data_red
 
@@ -65,7 +63,6 @@ if __name__=="__main__":
     parser.add_argument("--no-sync", "-nsync", action="store_true", help="no synchronization with consumer, needed if run independently")
     parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     parser.add_argument("--debug-log", "-debug", action="store_true", help="debug message print")
-
 
     args = parser.parse_args()
 
@@ -139,6 +136,7 @@ if __name__=="__main__":
     transmission_end_time = current_timestamp
     first_delete_idx = next_delete_idx
     initial_missed_count = missed
+    missed_after_evaluation_time = 0
     while consumed + missed < current_transmit_idx:
         current_timestamp = time.time()
         # keep deleting data if deadline over
@@ -146,6 +144,7 @@ if __name__=="__main__":
             try:
                 ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx))
                 missed += 1
+                missed_after_evaluation_time += 1
                 if next_delete_idx > total_image_count/5:
                     missed_nonpretrained += 1
             except FileNotFoundError:
@@ -163,8 +162,7 @@ if __name__=="__main__":
     print("Total Transmitted Data: {0}".format(current_transmit_idx))
     print("Consumed: {0}".format(consumed))
     print("Missed: {0}".format(missed))
-    print("Consumed Non pretrained: {0}".format(consumed_nonpretrained))
-    print("Missed Non pretrained: {0}".format(missed_nonpretrained))
+    print("Missed After Evaluation Time: {0}".format(missed_after_evaluation_time))
     print("Total Transmission Time: {0}s".format(transmission_end_time - start_timestamp))
     total_time = time.time() - start_timestamp
     print("Total Time: {0}s".format(total_time))
@@ -173,8 +171,8 @@ if __name__=="__main__":
     with open("transmission_state.csv", "w") as fout:
         # rate,deadline_msec,total,consumed,missed,transmission time, total time
         fout.write(
-            "{0},{1},{2},{3},{4},{5},{6},{7},{8}\n".format(
-                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed, consumed_nonpretrained, missed_nonpretrained,
+            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}\n".format(
+                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed, missed_after_evaluation_time, consumed_nonpretrained, missed_nonpretrained,
                 transmission_end_time - start_timestamp, total_time
             )
         )
