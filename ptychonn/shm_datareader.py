@@ -37,34 +37,39 @@ class SHMInferDataReader():
         missed = 0
         dataidx_list = []
         ara = None
-        for i in range(bs):
-            try:
-                # read it and add to batch
-                if consumed == 0:
-                    ara = ipc.read_shm_data(
-                        parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                    ).reshape(1, 1, parameters.H, parameters.W)
-                else:
-                    ara = np.vstack(
-                        (
-                            ara, ipc.read_shm_data(
-                                parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                            ).reshape(1, 1, parameters.H, parameters.W)
-                        ) 
-                    )
+        # to handle initial condition
+        # as inference probe is always behind at the beginning it is possible read idx set at negative
+        # the dataset size should also be set 0 but that check is not done here
+        # dataset size was added later, inference shm reader supposed to read blindly from current probe/idx position
+        if self.cur_readidx >= 0:
+            for i in range(bs):
+                try:
+                    # read it and add to batch
+                    if consumed == 0:
+                        ara = ipc.read_shm_data(
+                            parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                        ).reshape(1, 1, parameters.H, parameters.W)
+                    else:
+                        ara = np.vstack(
+                            (
+                                ara, ipc.read_shm_data(
+                                    parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                                ).reshape(1, 1, parameters.H, parameters.W)
+                            )
+                        )
 
-                # inference will be done only once
-                # so delete
-                ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
-                consumed += 1
-                dataidx_list.append(self.cur_readidx)
-                self.cur_readidx += 1
-            except FileNotFoundError:
-                missed += 1
-                self.reposition()
-            except Exception as e:
-                self.reposition()
-                pass
+                    # inference will be done only once
+                    # so delete
+                    ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
+                    consumed += 1
+                    dataidx_list.append(self.cur_readidx)
+                    self.cur_readidx += 1
+                except FileNotFoundError:
+                    missed += 1
+                    self.reposition()
+                except Exception as e:
+                    self.reposition()
+                    pass
 
         return ara, consumed, missed, dataidx_list
     
@@ -214,6 +219,9 @@ class SHMTrainDataReader():
 
         return ara1, ara2, ara3, consumed
     
+    def get_dataidxlist(self) -> List[int]:
+        return list(range(self.cur_readidx_begin, self.cur_readidx_end + 1))
+
     def reposition(self):
         """
             This method is special one to move the read head to available ground truth 
