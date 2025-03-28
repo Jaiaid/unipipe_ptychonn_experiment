@@ -16,6 +16,7 @@ rate=$3
 deadlinemsec=$4
 skipline=$5
 
+echo "Deleting data from /dev/shm"
 set +x
 rm /dev/shm/unipipe_exp*
 rm model_multicontext/inctrained_interaval*
