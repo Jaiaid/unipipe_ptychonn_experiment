@@ -35,7 +35,8 @@ import logfast.fastlogger
 
 
 def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
-                       trainbs, epoch_count, datarate, deadline_sec, chkpt_dir,
+                       trainbs, epoch_count, datarate, deadline_sec,
+                       traindatalist_fileobj, ipriteration_no, chkpt_dir,
                        logger:logfast.fastlogger.FastLogger, time_limit=None):
 
     logger.log("MULTICONTEXT TRAIN BEGIN")
@@ -62,6 +63,10 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 
     # for loss measure and some stats
     total_iter_count = 0
+
+    # list down the train data idx
+    for i in trainloader.get_dataidxlist():
+        traindatalist_fileobj.write("{0},{1}\n".format(i, ipriteration_no))
 
     # iter_creation_start_time = time.time()
     # print("iterator creation time:", time.time() - iter_creation_start_time)
@@ -163,8 +168,8 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             logger.log("MULTICONTEXT TRAIN INTERVAL REM. TIME", interval_remaining_time)
 
         # save model if loss is lower than before
-        # if tot_loss / (total_iter_count + 1) < previous_loss:
-        if True:
+        if tot_loss / (total_iter_count + 1) < previous_loss:
+        # if True:
             ptychonn.process_funcs.update_saved_model(
                 model=model,
                 path=os.path.join(
@@ -239,6 +244,11 @@ if __name__ == "__main__":
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
 
+    # initiate the file name to log down which data got consumed for what
+    traindatalist_file = open(
+        "/dev/shm/traindatalist_multicontext_{0}_{1}_{2}_{3}.csv".format(
+            args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w")
+
     # init the model
     model = ptychonn.model.recon_model()
     if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
@@ -256,7 +266,7 @@ if __name__ == "__main__":
     
     # training state controller variable initiation
     start_time = time.time()
-    cur_ipriteration = 0
+    cur_ipriteration = -1
     interipr_model_idx = 0
     cur_interval = 1
     current_time = start_time
@@ -267,18 +277,18 @@ if __name__ == "__main__":
     trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
 
     # to give producer time to put first data
-    time.sleep(1/args.acquisition_rate)
+    time.sleep(1/args.datarate)
 
-    logger.log("INTERVAL START {0}".format(cur_interval + 1))
+    logger.log("INTERVAL START {0}".format(cur_interval))
     while current_time - start_time < total_runtime:
         current_time = time.time()
         if current_time - cur_interval_start_time > args.interval_duration:
             # mark of interval start
-            logger.log("INTERVAL END {0}".format(cur_interval + 1))
+            logger.log("INTERVAL END {0}".format(cur_interval))
             cur_interval += 1
             cur_interval_start_time = current_time
             # mark of interval start
-            logger.log("INTERVAL START {0}".format(cur_interval + 1))
+            logger.log("INTERVAL START {0}".format(cur_interval))
 
         # checking for signal existance from IPR process
         # this progression needs to be done irrespective of interval
@@ -295,6 +305,8 @@ if __name__ == "__main__":
             # t1 = time.time()
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
             train_datareader.reposition()
+        else:
+            continue
             # print("first train data selection takes {0}s".format(time.time() - t1))
 
         # start of unipipe initiation and call
@@ -313,6 +325,7 @@ if __name__ == "__main__":
         metrics, epoch_count = multicontext_train(
             model, train_datareader, epoch_count=epoch_count,
             trainbs=trainbs, datarate=args.datarate, deadline_sec=deadline_sec,
+            traindatalist_fileobj=traindatalist_file, ipriteration_no=cur_ipriteration,
             chkpt_dir=multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration),
             logger=logger, time_limit=ipriter_time_limit)
         # log how much ipr iteration matches with unipipe iteration
@@ -324,4 +337,5 @@ if __name__ == "__main__":
         # while time.time() - unipipe_time_start < unipipe_time_limit:
         #     pass
 
+    traindatalist_file.close()
     logger.persist(args.csvlog_file[:-4] + "_train.log")

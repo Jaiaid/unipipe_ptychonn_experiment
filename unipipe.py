@@ -35,7 +35,8 @@ import logfast.fastlogger
 
 def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
                        teststream:ptychonn.shm_datareader.SHMInferDataReader,
-                       epoch_count, datarate, deadline_sec, chkpt_path,
+                       epoch_count, datarate, deadline_sec, 
+                       traindatalist_fileobj, inferdatalist_fileobj, ipriteration_no, chkpt_path,
                        logger:logfast.fastlogger.FastLogger,
                        time_limit=None, constant_bs=False,
                        trainbs=ptychonn.parameters.TRAIN_BATCH_SIZE, inferbs=ptychonn.parameters.INFERENCE_BATCH_SIZE, inffrac=1.0):
@@ -79,6 +80,10 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     time_uf = None
     time_ub = None
 
+    # list down the train data idx
+    for i in trainloader.get_dataidxlist():
+        traindatalist_fileobj.write("{0},{1}\n".format(i, ipriteration_no))
+
     # iter_creation_start_time = time.time()
     # print("iterator creation time:", time.time() - iter_creation_start_time)
     # print("intialization time:", time.time() - interval_init_time)
@@ -86,6 +91,8 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     train_start_time = time.time()
     # to control when the training of current interval will stop
     previous_loss = 0
+    prev_val_loss = math.inf
+    val_ratio = 0.2
     # if epochs are finished or convergence happen we stop train but inference continues
     stop_train = False
 
@@ -115,10 +122,11 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 try:
                     infer_batch, consumed, missed, inferidxlist = teststream.read(
                         bs=min(inferbs, len(teststream) - total_consumed))
-                    if infer_batch is None:
-                        continue
-                    infer_count = infer_batch.shape[0]
-                    inference_iter_count += 1
+                    if infer_batch is not None:
+                        infer_count = infer_batch.shape[0]
+                        inference_iter_count += 1
+                        total_missed += missed
+                        total_consumed += infer_count
                 except Exception as e:
                     print(e)
                     continue
@@ -157,6 +165,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 if infer_count != len(inferidxlist):
                     print(infer_count != len(inferidxlist), infer_count, len(inferidxlist))
                 for i in range(len(inferidxlist)):
+                    inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
                     ptychonn.ipc.create_shm_data(
                         os.path.join(
                             ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
@@ -173,8 +182,6 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                     )
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - iteration_start_time)
-            total_missed += missed
-            total_consumed += infer_count
 
             # for ideal train batch size calculation
             time_uf = (forward_pass_done_time -  forward_pass_arrival_time)/ft_images.shape[0]
@@ -183,36 +190,45 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             if not stop_train:
                 gt_amps = torch.tensor(train_batch[1]).to("cuda")
                 gt_phs = torch.tensor(train_batch[2]).to("cuda")
+                val_count = int(gt_amps.shape[0] * val_ratio)
+                logger.log("VAL SIZE", val_count)
 
                 backward_pass_arrival_time = time.time()
                 #Compute losses
-                loss_a = criterion(pred_amps[infer_count:,:], gt_amps) #Monitor amplitude loss
-                loss_p = criterion(pred_phs[infer_count:,:], gt_phs) #Monitor phase loss but only within support (which may not be same as true amp)
-                loss = loss_a + loss_p #Use equiweighted amps and phase
+                loss_a_val = criterion(pred_amps[infer_count:infer_count+val_count,:], gt_amps[:val_count,])
+                loss_p_val = criterion(pred_phs[infer_count:infer_count+val_count,:], gt_phs[:val_count,])
+                loss_val = loss_a_val + loss_p_val
+                if loss_val < prev_val_loss:
+                    logger.log("VAL LOSS IMPROVED, UPDATING PARAMETERS", prev_val_loss, loss_val)
+                    prev_val_loss = loss_val
+                
+                    loss_a = criterion(pred_amps[infer_count+val_count:,:], gt_amps[val_count:,]) #Monitor amplitude loss
+                    loss_p = criterion(pred_phs[infer_count+val_count:,:], gt_phs[val_count:,]) #Monitor phase loss but only within support (which may not be same as true amp)
+                    loss = loss_a + loss_p #Use equiweighted amps and phase
 
-                #Zero current grads and do backprop
-                optimizer.zero_grad() 
-                loss.backward()
-                optimizer.step()
+                    #Zero current grads and do backprop
+                    optimizer.zero_grad() 
+                    loss.backward()
+                    optimizer.step()
 
-                l_a = loss_a.detach().item()
-                l_p = loss_p.detach().item()
-                loss_amp += l_a
-                loss_ph += l_p
-                tot_loss += l_a + l_p
-                logger.log("ITER_COUNT, TRAIN LOSS", total_iter_count, tot_loss, loss_amp, loss_ph)
-                logger.log("ITER_COUNT, TRAIN LOSS", l_a + l_p, l_a, l_p)
+                    l_a = loss_a.detach().item()
+                    l_p = loss_p.detach().item()
+                    loss_amp += l_a
+                    loss_ph += l_p
+                    tot_loss += l_a + l_p
+                    logger.log("ITER_COUNT, TRAIN LOSS", total_iter_count, tot_loss, loss_amp, loss_ph)
+                    # logger.log("ITER_COUNT, TRAIN LOSS", l_a + l_p, l_a, l_p)
 
-                scheduler.step() 
-                metrics['lrs'].append(scheduler.get_last_lr())
-                backward_pass_done_time = time.time()
+                    scheduler.step() 
+                    metrics['lrs'].append(scheduler.get_last_lr())
+                    backward_pass_done_time = time.time()
 
-                time_ub = (backward_pass_done_time - backward_pass_arrival_time)/(ft_images.shape[0] - infer_count)
-                # print("ub ", time_ub)
-                total_train_iter_count += 1
+                    time_ub = (backward_pass_done_time - backward_pass_arrival_time)/(ft_images.shape[0] - infer_count)
+                    # print("ub ", time_ub)
+                    total_train_iter_count += 1
 
-                iter_end_timestamp = time.time()
-                logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
+                    iter_end_timestamp = time.time()
+                    logger.log("BACKWARD TAKES(sec.)", iter_end_timestamp - backward_pass_arrival_time)
             else:
                 iter_end_timestamp = time.time()
 
@@ -306,6 +322,14 @@ if __name__ == "__main__":
     # make a result directory where generated images will be stored
     ptychonn.ipc.create_shm_folder(ptychonn.parameters.SHM_MARKER_NNRES_FOLDER)
 
+    # initiate the file name to log down which data got consumed for what
+    traindatalist_file = open(
+        "/dev/shm/traindatalist_unipipe_{0}_{1}_{2}_{3}.csv".format(
+            args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w") 
+    inferdatalist_file = open(
+        "/dev/shm/inferdatalist_unipipe_{0}_{1}_{2}_{3}.csv".format(
+            args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w") 
+
     # init the model
     model = ptychonn.model.recon_model()
     if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
@@ -322,7 +346,7 @@ if __name__ == "__main__":
     
     # training state controller variable initiation
     start_time = time.time()
-    cur_ipriteration = 0
+    cur_ipriteration = -1
     cur_interval = 1
     current_time = start_time
     cur_interval_start_time = current_time
@@ -332,18 +356,18 @@ if __name__ == "__main__":
     nn_uf = None
     nn_ub = None
     # to give producer time to put first data
-    time.sleep(1/args.acquisition_rate)
+    time.sleep(1/args.datarate)
 
-    logger.log("INTERVAL START {0}".format(cur_interval + 1))
+    logger.log("INTERVAL START {0}".format(cur_interval))
     while current_time - start_time < total_runtime:
         current_time = time.time()
         if current_time - cur_interval_start_time > args.interval_duration:
             # mark of interval start
-            logger.log("INTERVAL END {0}".format(cur_interval + 1))
+            logger.log("INTERVAL END {0}".format(cur_interval))
             cur_interval += 1
             cur_interval_start_time = current_time
             # mark of interval start
-            logger.log("INTERVAL START {0}".format(cur_interval + 1))
+            logger.log("INTERVAL START {0}".format(cur_interval))
 
         # checking for signal existance from IPR process
         # this progression needs to be done irrespective of interval
@@ -357,15 +381,9 @@ if __name__ == "__main__":
             # t1 = time.time()
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
             train_datareader.reposition()
-            # print("first train data selection takes {0}s".format(time.time() - t1))
-
-        # pretrain stage
-        if cur_interval == 0:
-            # if we have done pretraining already with some model no need to redo it
-            if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-                model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
-                continue
+        else:
             continue
+            # print("first train data selection takes {0}s".format(time.time() - t1))
 
         # start of unipipe initiation and call
         unipipe_time_start = time.time()
@@ -378,7 +396,8 @@ if __name__ == "__main__":
         # for inference location on datastream repositioning
         infer_datareader.cur_readidx  = train_datareader.cur_readidx_begin - infersize + 1
         # set the reader length for the unipipe call
-        infer_datareader.set_len(infersize)
+        # to handle initial boundary condition
+        infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
 
         # log the performance model related states
         logger.log(
@@ -401,6 +420,7 @@ if __name__ == "__main__":
         metrics, _, _, nn_uf, nn_ub = unipipe_traininfer(
             model, train_datareader, infer_datareader, epoch_count=epoch_count,
             datarate=args.datarate, deadline_sec=deadline_sec,
+            traindatalist_fileobj=traindatalist_file, inferdatalist_fileobj=inferdatalist_file, ipriteration_no=cur_ipriteration,
             chkpt_path="inctrained_interval{0}_model.pth".format(cur_ipriteration), logger=logger,
             time_limit=unipipe_time_limit)
         # log how much ipr iteration matches with unipipe iteration
@@ -422,6 +442,8 @@ if __name__ == "__main__":
         # amp error, ph error, nn amp error, nn ph error
         fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
 
+    traindatalist_file.close()
+    inferdatalist_file.close()
     logger.persist(args.csvlog_file[:-4] + ".log")
 
 

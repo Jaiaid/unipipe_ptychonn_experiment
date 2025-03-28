@@ -34,6 +34,7 @@ import logfast.fastlogger
 
 def pretrained_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
+        inferdatalist_fileobj, ipriteration_no,
         logger:logfast.fastlogger.FastLogger, datarate:float, time_limit=None):
 
     logger.log("PRETRAINED BEGIN")
@@ -75,6 +76,7 @@ def pretrained_inferonly_process(
         pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
         # print(pred_amps.shape, pred_phs.shape)
         for i in range(infer_count):
+            inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
             ptychonn.ipc.create_shm_data(
                 os.path.join(
                     ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
@@ -144,6 +146,11 @@ if __name__ == "__main__":
     # make a result directory where generated images will be stored
     ptychonn.ipc.create_shm_folder(ptychonn.parameters.SHM_MARKER_NNRES_FOLDER)
 
+    # initiate the file name to log down which data got consumed for what
+    inferdatalist_file = open(
+        "/dev/shm/inferdatalist_pretrained_{0}_{1}_{2}_{3}.csv".format(
+            args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w") 
+
     # init the model
     model = ptychonn.model.recon_model()
     if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
@@ -162,7 +169,7 @@ if __name__ == "__main__":
     
     # training state controller variable initiation
     start_time = time.time()
-    cur_ipriteration = 0
+    cur_ipriteration = -1
     cur_interval = 1
     current_time = start_time
     cur_interval_start_time = current_time
@@ -171,18 +178,18 @@ if __name__ == "__main__":
     total_runtime = (args.interval_count - 1) * deadline_sec
     total_consumed = 0
     # to give producer time to put first data
-    time.sleep(1/args.acquisition_rate)
+    time.sleep(1/args.datarate)
 
-    logger.log("INTERVAL START {0}".format(cur_interval + 1))
+    logger.log("INTERVAL START {0}".format(cur_interval))
     while current_time - start_time < total_runtime:
         current_time = time.time()
         if current_time - cur_interval_start_time > args.interval_duration:
             # mark of interval start
-            logger.log("INTERVAL END {0}".format(cur_interval + 1))
+            logger.log("INTERVAL END {0}".format(cur_interval))
             cur_interval += 1
             cur_interval_start_time = current_time
             # mark of interval start
-            logger.log("INTERVAL START {0}".format(cur_interval + 1))
+            logger.log("INTERVAL START {0}".format(cur_interval))
 
         # start of current interval processing
         # checking for signal existance from IPR process
@@ -196,12 +203,25 @@ if __name__ == "__main__":
             # update the current inference idx and training data idx
             # the files are named in such a way that
             # t1 = time.time()
-            infer_datareader.reposition()
+            # infer_datareader.reposition()
             # print("first infer data selection takes {0}s".format(time.time() - t1))
+            ipriter_time_limit = args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
+            trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
+            infersize = int(round(ipriter_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+            # for inference location on datastream repositioning
+            train_readidx_curpos = cur_ipriteration*(trainsize + infersize - 1)
+            logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)
+            infer_datareader.cur_readidx = train_readidx_curpos - infersize + 1
+            # set the reader length for the unipipe call
+            # to handle initial boundary condition
+            infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
+        else:
+            continue
 
         # put unipipe traininfer for one ipriteration data here
         metrics, consumed = pretrained_inferonly_process(
-            model, infer_datareader, 
+            model, infer_datareader,
+            inferdatalist_fileobj=inferdatalist_file, ipriteration_no=cur_ipriteration, 
             logger=logger, datarate=args.datarate, time_limit=deadline_sec)
         
         total_consumed += consumed
@@ -219,4 +239,5 @@ if __name__ == "__main__":
         # amp error, ph error, nn amp error, nn ph error
         fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
 
+    inferdatalist_file.close()
     logger.persist(args.csvlog_file[:-4] + ".log")
