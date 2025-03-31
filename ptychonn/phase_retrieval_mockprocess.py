@@ -69,6 +69,7 @@ if __name__=="__main__":
     parser.add_argument("--deadline-msec", "-d", type=float, help="after how many millisecond a data file in shm will be removed, also determines interval length")
     parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     parser.add_argument("--interval-count", "-icount", type=int, help="how many interval to run for")
+    parser.add_argument("--interval-duration", "-idur", type=int, required=True, help="length of interval in seconds")
     parser.add_argument("--interval-one-oracle", "-i", action="store_true", help="first interval all ground truth data will be made available")
     
     args = parser.parse_args()
@@ -109,7 +110,7 @@ if __name__=="__main__":
     # to give producer time to put first data
     time.sleep(1/args.acquisition_rate)
     # for cur_interval in range():#(args.interval_count):
-    while current_timestamp - start_timestamp < ((args.interval_count -1) * deadline_sec):
+    while current_timestamp - start_timestamp < ((args.interval_count -1) * args.interval_duration):
         cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
         ipc.create_shm_folder(cur_folder)
 

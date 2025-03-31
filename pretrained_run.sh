@@ -15,6 +15,7 @@ dur=$2
 rate=$3
 deadlinemsec=$4
 skipline=$5
+iprt=$6
 
 echo "Deleting data from /dev/shm"
 set +x
@@ -28,7 +29,7 @@ set -x
 
 EXP_SCRIPT=pretrained.py
 
-python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -csvlog tmp.csv &
+python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -iprt ${iprt} -csvlog tmp.csv &
 PRETRAIN_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

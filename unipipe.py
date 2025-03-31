@@ -38,7 +38,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                        epoch_count, datarate, deadline_sec, 
                        traindatalist_fileobj, inferdatalist_fileobj, ipriteration_no, chkpt_path,
                        logger:logfast.fastlogger.FastLogger,
-                       time_limit=None, constant_bs=False,
+                       time_limit=None, constant_bs=False, periter_validation=False,
                        trainbs=ptychonn.parameters.TRAIN_BATCH_SIZE, inferbs=ptychonn.parameters.INFERENCE_BATCH_SIZE, inffrac=1.0):
 
     logger.log("UNIPIPE BEGIN")
@@ -131,13 +131,16 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                     print(e)
                     continue
 
+            train_count = 0
             if not stop_train:
                 train_batch = trainloader.read(bs=min(trainbs, len(trainloader) - train_consumed))
                 if train_batch[0] is None:
                     logger.log("TRAIN READ FAILED, STOPPED TRAIN")
                     stop_train = True
+                    train_count = 0
                 else:
                     train_consumed += train_batch[0].shape[0]
+                    train_count = train_batch[0].shape[0]
 
             # some infer data is there, merge and pass to context
             # or training is done now to pass only infer data to context
@@ -148,10 +151,13 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 ft_images = torch.concat((torch.tensor(infer_batch), torch.tensor(train_batch[0])), axis=0).to("cuda")
             elif infer_count > 0 and stop_train:
                 ft_images = torch.tensor(infer_batch).to("cuda")
-            else:
+            elif not stop_train:
                 ft_images = torch.tensor(train_batch[0]).to("cuda")
-            logger.log("UNIPIPE TRAIN, INFER BS", train_batch[0].shape[0], infer_count)
+            else:
+                continue
+            logger.log("UNIPIPE TRAIN, INFER BS", train_count, infer_count)
             
+
             pred_amps, pred_phs = model(ft_images) #Forward pass
             forward_pass_done_time = time.time()
 
@@ -194,18 +200,27 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 logger.log("VAL SIZE", val_count)
 
                 backward_pass_arrival_time = time.time()
-                #Compute losses
-                loss_a_val = criterion(pred_amps[infer_count:infer_count+val_count,:], gt_amps[:val_count,])
-                loss_p_val = criterion(pred_phs[infer_count:infer_count+val_count,:], gt_phs[:val_count,])
-                loss_val = loss_a_val + loss_p_val
-                if loss_val < prev_val_loss:
-                    logger.log("VAL LOSS IMPROVED, UPDATING PARAMETERS", prev_val_loss, loss_val)
-                    prev_val_loss = loss_val
                 
-                    loss_a = criterion(pred_amps[infer_count+val_count:,:], gt_amps[val_count:,]) #Monitor amplitude loss
-                    loss_p = criterion(pred_phs[infer_count+val_count:,:], gt_phs[val_count:,]) #Monitor phase loss but only within support (which may not be same as true amp)
-                    loss = loss_a + loss_p #Use equiweighted amps and phase
+                
+                # if the flag is set update this for per iteration validaiton
+                if periter_validation:
+                    #Compute validation losses
+                    loss_a_val = criterion(pred_amps[infer_count:infer_count+val_count,:], gt_amps[:val_count,])
+                    loss_p_val = criterion(pred_phs[infer_count:infer_count+val_count,:], gt_phs[:val_count,])
+                    loss_val = (loss_a_val + loss_p_val).detach().item()
+                else:
+                    loss_val = 0
 
+                loss_a = criterion(pred_amps[infer_count+val_count:,:], gt_amps[val_count:,]) #Monitor amplitude loss
+                loss_p = criterion(pred_phs[infer_count+val_count:,:], gt_phs[val_count:,]) #Monitor phase loss but only within support (which may not be same as true amp)
+                loss = loss_a + loss_p #Use equiweighted amps and phase
+
+                # first time it will be true always as prev_val_loss == math.inf
+                # if we do not update prev_val_loss
+                if loss_val < prev_val_loss:
+                    if periter_validation:
+                        logger.log("VAL LOSS IMPROVED, UPDATING PARAMETERS", prev_val_loss, loss_val)
+                        prev_val_loss = loss_val
                     #Zero current grads and do backprop
                     optimizer.zero_grad() 
                     loss.backward()
@@ -233,6 +248,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 iter_end_timestamp = time.time()
 
             total_iter_count += 1
+            iter_end_timestamp = time.time()
             logger.log("ITERATION TAKES(sec.)", iter_end_timestamp - iteration_start_time)
             iteration_time += iter_end_timestamp - iteration_start_time
 
@@ -311,6 +327,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
     arg_parser.add_argument("--iprfrac", "-iprfrac", type=float, default=None, help="what portion of training data will come from IPR")
     arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
+    arg_parser.add_argument("--validation-training", "-validation", action="store_true", help="if per iteration validation will be used")
     arg_parser.add_argument("--inffrac", "-inffrac", type=float, default=1.0, help="how much factor to multiply with infer bs")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     # get the arguments
@@ -421,7 +438,7 @@ if __name__ == "__main__":
             model, train_datareader, infer_datareader, epoch_count=epoch_count,
             datarate=args.datarate, deadline_sec=deadline_sec,
             traindatalist_fileobj=traindatalist_file, inferdatalist_fileobj=inferdatalist_file, ipriteration_no=cur_ipriteration,
-            chkpt_path="inctrained_interval{0}_model.pth".format(cur_ipriteration), logger=logger,
+            chkpt_path="inctrained_interval{0}_model.pth".format(cur_ipriteration), logger=logger, periter_validation=args.validation_training,
             time_limit=unipipe_time_limit)
         # log how much ipr iteration matches with unipipe iteration
         logger.log(
