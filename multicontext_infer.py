@@ -200,7 +200,7 @@ if __name__ == "__main__":
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
     # first interval data is used to pretrain the model
-    total_runtime = (args.interval_count - 1) * deadline_sec
+    total_runtime = (args.interval_count - 1) * args.interval_duration
     total_consumed = 0
 
     # to give producer time to put first data
