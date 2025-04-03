@@ -31,6 +31,18 @@ import multicontext_parameters
 # for logging
 import logfast.fastlogger
 
+def estimate_T_IPR(
+        phase_retrieval_genrate: float, acquisition_rate: float,
+        deadline_sec: float):
+
+    return max(
+        1/phase_retrieval_genrate,
+        deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        # min(
+        #     deadline_sec,
+        #     deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        # )
+    )
 
 def multicontext_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
@@ -188,6 +200,15 @@ if __name__ == "__main__":
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
     infer_datareader.set_len(args.datarate * args.interval_duration)
 
+    # warmup run
+    warmup_start_time = time.time()
+    metrics, consumed = multicontext_inferonly_process(
+            model, infer_datareader, 
+            logger=logger, datarate=args.datarate, time_limit=args.deadline/1000,
+            inferdatalist_fileobj=inferdatalist_file, ipriteration_no=0,
+            chkpt_dir=multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(0))
+    logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
+
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
     print("multicontext infer consumption start ", time.time())
@@ -204,7 +225,7 @@ if __name__ == "__main__":
     total_consumed = 0
 
     # to give producer time to put first data
-    time.sleep(1/args.datarate)
+    # time.sleep(1/args.datarate)
 
     logger.log("INTERVAL START {0}".format(cur_interval))
     while current_time - start_time < total_runtime:
@@ -233,7 +254,9 @@ if __name__ == "__main__":
             # t1 = time.time()
             # infer_datareader.reposition()
             # print("first infer data selection takes {0}s".format(time.time() - t1))
-            ipriter_time_limit = args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
+            # ipriter_time_limit = deadline_sec# args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
+            ipriter_time_limit = estimate_T_IPR(
+                phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec, acquisition_rate=args.datarate)
             trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
             infersize = int(round(ipriter_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
             # for inference location on datastream repositioning

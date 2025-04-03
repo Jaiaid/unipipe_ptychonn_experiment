@@ -171,8 +171,8 @@ if __name__=="__main__":
     with open("transmission_state.csv", "w") as fout:
         # rate,deadline_msec,total,consumed,missed,transmission time, total time
         fout.write(
-            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}\n".format(
-                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed, missed_after_evaluation_time, consumed_nonpretrained, missed_nonpretrained,
+            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}\n".format(
+                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed, missed_after_evaluation_time,(missed-missed_after_evaluation_time)/current_transmit_idx, consumed_nonpretrained, missed_nonpretrained,
                 transmission_end_time - start_timestamp, total_time
             )
         )

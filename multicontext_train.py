@@ -33,11 +33,39 @@ import multicontext_parameters
 # for logging
 import logfast.fastlogger
 
+def estimate_T_IPR(
+        phase_retrieval_genrate: float, acquisition_rate: float,
+        deadline_sec: float):
+
+    return max(
+        1/phase_retrieval_genrate,
+        deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        # min(
+        #     deadline_sec,
+        #     deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        # )
+    )
+
+# init the model
+model = ptychonn.model.recon_model()
+if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
+    model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+else:
+    print("Pretrained Model Not Found...Exiting")
+    exit()
+
+iter_per_epoch = np.floor(1/64) + 1
+step_size = 6 * iter_per_epoch
+criterion = torch.nn.L1Loss()
+optimizer = torch.optim.Adam(model.parameters(), lr = ptychonn.parameters.LR)
+scheduler = torch.optim.lr_scheduler.CyclicLR(
+    optimizer, base_lr=ptychonn.parameters.LR/10, max_lr=ptychonn.parameters.LR,
+    step_size_up=step_size, cycle_momentum=False, mode='triangular2')
 
 def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
                        trainbs, epoch_count, datarate, deadline_sec,
-                       traindatalist_fileobj, ipriteration_no, chkpt_dir,
-                       logger:logfast.fastlogger.FastLogger, time_limit=None):
+                       traindatalist_fileobj, ipriteration_no, 
+                       logger:logfast.fastlogger.FastLogger, chkpt_dir=None, time_limit=None):
 
     logger.log("MULTICONTEXT TRAIN BEGIN")
     logger.log("MULTICONTEXT TRAIN DATASET SIZE", len(trainloader))
@@ -49,13 +77,6 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 
     # taken from paper's code
     # if optimizer_objects is None:
-    iter_per_epoch = np.floor(len(trainloader)/trainbs) + 1
-    step_size = 6 * iter_per_epoch
-    criterion = torch.nn.L1Loss()
-    optimizer = torch.optim.Adam(model.parameters(), lr = ptychonn.parameters.LR)
-    scheduler = torch.optim.lr_scheduler.CyclicLR(
-        optimizer, base_lr=ptychonn.parameters.LR/10, max_lr=ptychonn.parameters.LR,
-        step_size_up=step_size, cycle_momentum=False, mode='triangular2')
 
     # print("training mechanism creation takes ", time.time() - init_time)
     # to store training related metrics
@@ -249,16 +270,18 @@ if __name__ == "__main__":
         "/dev/shm/traindatalist_multicontext_{0}_{1}_{2}_{3}.csv".format(
             args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w")
 
-    # init the model
-    model = ptychonn.model.recon_model()
-    if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-        model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
-    else:
-        print("Pretrained Model Not Found...Exiting")
-        exit()
     # init the data reader
-    infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
     train_datareader = ptychonn.shm_datareader.SHMTrainDataReader()
+
+    # warmup run
+    warmup_start_time = time.time()
+    metrics, epoch_count = multicontext_train(
+        model, train_datareader, epoch_count=3,
+        trainbs=1, datarate=args.datarate, deadline_sec=args.deadline/1000,
+        traindatalist_fileobj=traindatalist_file, ipriteration_no=0,
+        chkpt_dir="MODEL_MULTICONTEXT_dummy",
+        logger=logger, time_limit=args.deadline/1000)
+    logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
@@ -277,7 +300,7 @@ if __name__ == "__main__":
     trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
 
     # to give producer time to put first data
-    time.sleep(1/args.datarate)
+    # time.sleep(1/args.datarate)
 
     logger.log("INTERVAL START {0}".format(cur_interval))
     while current_time - start_time < total_runtime:
@@ -295,6 +318,8 @@ if __name__ == "__main__":
         # as IPR will keep running for data from interval 0 also (for which model is already trained)
         # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
         # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
+        ipr_training_time_start = time.time()
+        
         if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
             cur_ipriteration += 1
             logger.log("IPR ITERATION START", cur_ipriteration)
@@ -303,18 +328,24 @@ if __name__ == "__main__":
             # print("first infer data selection takes {0}s".format(time.time() - t1))
 
             # t1 = time.time()
+            # train_datareader.reposition()
+            # start of unipipe initiation and call
+            
+            ipriter_time_limit = deadline_sec #args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
+            ipriter_time_limit = estimate_T_IPR(
+                phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec, acquisition_rate=args.datarate)
+            trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
+            infersize = int(round(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
+            train_readidx_curpos = cur_ipriteration*(trainsize + infersize - 1)
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
-            train_datareader.reposition()
+
+            train_datareader.set_len(begin=train_readidx_curpos, end=train_readidx_curpos+trainsize-1)
+            epoch_count = ptychonn.parameters.EPOCHS
         else:
             continue
             # print("first train data selection takes {0}s".format(time.time() - t1))
 
-        # start of unipipe initiation and call
-        ipr_training_time_start = time.time()
         
-        ipriter_time_limit = args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
-        trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
-        epoch_count = ptychonn.parameters.EPOCHS
 
         # log the performance model related states
         logger.log(

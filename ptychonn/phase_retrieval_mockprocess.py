@@ -33,7 +33,17 @@ def get_gtdata(skip_line=0) -> np.ndarray:
 def estimate_T_IPR(
         phase_retrieval_genrate: float, acquisition_rate: float,
         deadline_sec: float):
-    return phase_retrieval_genrate * deadline_sec / (acquisition_rate - phase_retrieval_genrate)
+
+    return max(
+        1/phase_retrieval_genrate,
+        deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        # min(
+        #     deadline_sec,
+        #     deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        # )
+    )
+    # return deadline_sec
+    # return phase_retrieval_genrate * deadline_sec / (acquisition_rate - phase_retrieval_genrate)
 
 
 # the synchronization of transmission and producing like following
@@ -93,7 +103,7 @@ if __name__=="__main__":
         phase_retrieval_genrate=args.generation_rate,
         acquisition_rate=args.acquisition_rate,
         deadline_sec=deadline_sec)
-    skip_data_idx = round(deadline_sec * args.generation_rate)
+    skip_data_idx = round(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
     print(time_stretch_continuous_data_process, skip_data_idx)
 
     # signal finish of initiation

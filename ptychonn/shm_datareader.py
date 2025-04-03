@@ -22,9 +22,12 @@ class SHMInferDataReader():
            call .reposition() explitictly to avoid that. Otherwise, multiple read call 
            may return nothing until bs indices is passed and current existing idx is reached 
     """
-    def __init__(self):
+    def __init__(self, bs=64, dryrun_mode=False):
         self.cur_readidx = 0
         self.len = 0
+        self.batch_size = bs
+        self.dataara = np.asarray(np.random.rand(bs,1,64,64),dtype=np.float32)
+        self.dryrun_mode = True
 
     def set_len(self, len):
         self.len = len
@@ -37,40 +40,48 @@ class SHMInferDataReader():
         missed = 0
         dataidx_list = []
         ara = None
+
         # to handle initial condition
         # as inference probe is always behind at the beginning it is possible read idx set at negative
         # the dataset size should also be set 0 but that check is not done here
         # dataset size was added later, inference shm reader supposed to read blindly from current probe/idx position
-        if self.cur_readidx >= 0:
+        if self.cur_readidx >= 0 or self.dryrun_mode:
             for i in range(bs):
                 try:
-                    # read it and add to batch
-                    if consumed == 0:
-                        ara = ipc.read_shm_data(
-                            parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                        ).reshape(1, 1, parameters.H, parameters.W)
-                    else:
-                        ara = np.vstack(
-                            (
-                                ara, ipc.read_shm_data(
-                                    parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                                ).reshape(1, 1, parameters.H, parameters.W)
+                    if not self.dryrun_mode:
+                        # read it and add to batch
+                        if consumed == 0:
+                            ara = ipc.read_shm_data(
+                                parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                            ).reshape(1, 1, parameters.H, parameters.W)
+                        else:
+                            ara = np.vstack(
+                                (
+                                    ara, ipc.read_shm_data(
+                                        parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                                    ).reshape(1, 1, parameters.H, parameters.W)
+                                )
                             )
-                        )
+                        
+                        dataidx_list.append(self.cur_readidx)
 
                     # inference will be done only once
                     # so delete
                     ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
                     consumed += 1
-                    dataidx_list.append(self.cur_readidx)
                     self.cur_readidx += 1
                 except FileNotFoundError:
                     missed += 1
-                    self.reposition()
+                    self.cur_readidx += 1
+                    if not self.dryrun_mode:
+                        self.reposition()
                 except Exception as e:
-                    self.reposition()
-                    pass
+                    self.cur_readidx += 1
+                    if not self.dryrun_mode:
+                        self.reposition()
 
+        if self.dryrun_mode:
+            return self.dataara[:consumed,], consumed, missed, list(range(self.cur_readidx - bs, self.cur_readidx - bs + consumed))
         return ara, consumed, missed, dataidx_list
     
     def reposition(self):
@@ -114,13 +125,17 @@ class SHMTrainDataReader():
            call .reposition() explitictly to avoid that. Otherwise, multiple read call 
            may return nothing until bs indices is passed and current existing idx is reached 
     """
-    def __init__(self):
+    def __init__(self, bs=64):
         self.cur_readidx = 0
         # stored so in a epoch rotation can be done for a chunk of data
         self.cur_readidx_begin = 0
         self.cur_readidx_end = 0
         self.cur_ipriteration = 0
         self.cur_datafoldername = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
+        self.dryrun_mode = True
+        self.dataara1 = np.asarray(np.random.rand(bs,1,64,64),dtype=np.float32)
+        self.dataara2 = np.asarray(np.random.rand(bs,1,64,64),dtype=np.float32)
+        self.dataara3 = np.asarray(np.random.rand(bs,1,64,64),dtype=np.float32)
         pass
 
     def __len__(self) -> int:
@@ -134,6 +149,11 @@ class SHMTrainDataReader():
         self.cur_ipriteration = cur_ipriteration
         self.cur_datafoldername = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
 
+    def set_len(self, begin, end):
+        self.cur_readidx_begin = begin 
+        self.cur_readidx_end = end
+        self.cur_readidx = self.cur_readidx_begin
+ 
     def reset(self):
         self.cur_readidx = self.cur_readidx_begin
 
@@ -141,82 +161,87 @@ class SHMTrainDataReader():
         consumed = 0
         ara1 = ara2 = ara3 = None
         for i in range(bs):
-            try:
-                if consumed == 0:
-                    ara1 = ipc.read_shm_data(
-                        os.path.join(
-                            self.cur_datafoldername,
-                            parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                        )
-                    ).reshape(1, 1, parameters.H, parameters.W)
-                    ara2 = ipc.read_shm_data(
-                        os.path.join(
-                            self.cur_datafoldername,
-                            parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(self.cur_readidx)
-                        ), dtype=np.float32
-                    ).reshape(1, 1, parameters.H, parameters.W)
-                    ara3 = ipc.read_shm_data(
-                        os.path.join(
-                            self.cur_datafoldername,
-                            parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
-                        ), dtype=np.float32
-                    ).reshape(1, 1, parameters.H, parameters.W)
-                else:
-                    ara1 = np.vstack(
-                        (
-                            ara1,
-                            ipc.read_shm_data(
-                                os.path.join(
-                                    self.cur_datafoldername,
-                                    parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                                )
-                            ).reshape(1, 1, parameters.H, parameters.W)
-                        ) 
-                    )
-                    ara2 = np.vstack(
-                        (
-                            ara2, ipc.read_shm_data(
-                                os.path.join(
-                                    self.cur_datafoldername,
-                                    parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(self.cur_readidx)
-                                ), dtype=np.float32
-                            ).reshape(1, 1, parameters.H, parameters.W)
-                        ) 
-                    )
-                    ara3 = np.vstack(
-                        (
-                            ara3, ipc.read_shm_data(
-                                os.path.join(
-                                    self.cur_datafoldername,
-                                    parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
-                                ), dtype=np.float32
-                            ).reshape(1, 1, parameters.H, parameters.W)
-                        ) 
-                    )
-                consumed += 1
-            except Exception as e:
-                # print(e, os.path.join(
-                #     self.cur_datafoldername,
-                #     parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
-                # ))
-                # print(
-                #     os.path.join(
-                #             self.cur_datafoldername,
-                #             parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
-                #         ),
-                #     os.path.exists(
-                #         os.path.join(
-                #             self.cur_datafoldername,
-                #             parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
-                #         )
-                #     )
-                # )
+            if self.dryrun_mode:
                 pass
+            else:
+                try:
+                    if consumed == 0:
+                        ara1 = ipc.read_shm_data(
+                            os.path.join(
+                                self.cur_datafoldername,
+                                parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                            )
+                        ).reshape(1, 1, parameters.H, parameters.W)
+                        ara2 = ipc.read_shm_data(
+                            os.path.join(
+                                self.cur_datafoldername,
+                                parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(self.cur_readidx)
+                            ), dtype=np.float32
+                        ).reshape(1, 1, parameters.H, parameters.W)
+                        ara3 = ipc.read_shm_data(
+                            os.path.join(
+                                self.cur_datafoldername,
+                                parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                            ), dtype=np.float32
+                        ).reshape(1, 1, parameters.H, parameters.W)
+                    else:
+                        ara1 = np.vstack(
+                            (
+                                ara1,
+                                ipc.read_shm_data(
+                                    os.path.join(
+                                        self.cur_datafoldername,
+                                        parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                                    )
+                                ).reshape(1, 1, parameters.H, parameters.W)
+                            ) 
+                        )
+                        ara2 = np.vstack(
+                            (
+                                ara2, ipc.read_shm_data(
+                                    os.path.join(
+                                        self.cur_datafoldername,
+                                        parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(self.cur_readidx)
+                                    ), dtype=np.float32
+                                ).reshape(1, 1, parameters.H, parameters.W)
+                            ) 
+                        )
+                        ara3 = np.vstack(
+                            (
+                                ara3, ipc.read_shm_data(
+                                    os.path.join(
+                                        self.cur_datafoldername,
+                                        parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                                    ), dtype=np.float32
+                                ).reshape(1, 1, parameters.H, parameters.W)
+                            ) 
+                        )
+                    consumed += 1
+                except Exception as e:
+                    # print(e, os.path.join(
+                    #     self.cur_datafoldername,
+                    #     parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                    # ))
+                    # print(
+                    #     os.path.join(
+                    #             self.cur_datafoldername,
+                    #             parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                    #         ),
+                    #     os.path.exists(
+                    #         os.path.join(
+                    #             self.cur_datafoldername,
+                    #             parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(self.cur_readidx)
+                    #         )
+                    #     )
+                    # )
+                    pass
             
             self.cur_readidx += 1
             if self.cur_readidx > self.cur_readidx_end:
                 self.cur_readidx = self.cur_readidx_begin
 
+        if self.dryrun_mode:
+            return self.dataara1[:bs,], self.dataara2[:bs,], self.dataara3[:bs,], bs
         return ara1, ara2, ara3, consumed
     
     def get_dataidxlist(self) -> List[int]:
@@ -229,8 +254,9 @@ class SHMTrainDataReader():
             
             For efficiency reason, it should be better called by consumer
         """
+
         self.cur_datafoldername = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(self.cur_ipriteration)
-        
+
         sorted_filelist = sorted(
             list(os.listdir(
                 os.path.join(
