@@ -105,3 +105,59 @@ class recon_model(nn.Module):
         ph = ph*np.pi #Using tanh activation (-1 to 1) for phase so multiply by pi
 
         return amp,ph
+
+
+# CHAT GPT generated
+# Approximately 4 times more parameter(~5M)
+class LargeReconModel(nn.Module):
+    def __init__(self, nconv=64):  # Increased base filters
+        super(LargeReconModel, self).__init__()
+        
+        # Encoder with more layers
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, nconv, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv, nconv, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv, nconv, 3, stride=1, padding=1), nn.ReLU(),  # Extra layer
+            nn.MaxPool2d(2),
+            
+            nn.Conv2d(nconv, nconv*2, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*2, nconv*2, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*2, nconv*2, 3, stride=1, padding=1), nn.ReLU(),  # Extra layer
+            nn.MaxPool2d(2),
+            
+            nn.Conv2d(nconv*2, nconv*4, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*4, nconv*4, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*4, nconv*4, 3, stride=1, padding=1), nn.ReLU(),  # Extra layer
+            nn.MaxPool2d(2),
+        )
+        
+        # Decoders with more layers
+        self.decoder1 = self._make_decoder(nconv)
+        self.decoder2 = self._make_decoder(nconv, final_activation=nn.Tanh())
+
+    def _make_decoder(self, nconv, final_activation=nn.Sigmoid()):
+        return nn.Sequential(
+            nn.Conv2d(nconv*4, nconv*4, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*4, nconv*4, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*4, nconv*4, 3, stride=1, padding=1), nn.ReLU(),  # Extra layer
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            
+            nn.Conv2d(nconv*4, nconv*2, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*2, nconv*2, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*2, nconv*2, 3, stride=1, padding=1), nn.ReLU(),  # Extra layer
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            
+            nn.Conv2d(nconv*2, nconv*2, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*2, nconv*2, 3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(nconv*2, nconv*2, 3, stride=1, padding=1), nn.ReLU(),  # Extra layer
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            
+            nn.Conv2d(nconv*2, 1, 3, stride=1, padding=1),
+            final_activation()
+        )
+    
+    def forward(self, x):
+        x1 = self.encoder(x)
+        amp = self.decoder1(x1)
+        ph = self.decoder2(x1) * torch.pi  # Phase restored to -π to π
+        return amp, ph
