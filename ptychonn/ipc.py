@@ -37,3 +37,40 @@ def move_shm(rel_path:str, new_rel_dirpath:str):
 
 def remove_shm(rel_path:str):
     return os.remove(os.path.join("/dev/shm", rel_path))
+
+
+if __name__=="__main__":
+    # to benchmark stuff
+    import time
+    REPEAT_COUNT = 100000
+    BYTE_SIZE_PER_FILE = 64*64*4
+    # create shm data, 1000000 data of 64,64 sized np.float32 numpy array
+    data = np.asarray(np.random.rand(64,64), dtype=np.float32)
+
+    start_time = time.time()
+    for i in range(REPEAT_COUNT):
+        create_shm_data(str(i), data)
+    time_taken = time.time()-start_time
+    print("Creating {0} file of size {1}Byte takes {2}s, on average {3}MB/s".format(
+        REPEAT_COUNT, BYTE_SIZE_PER_FILE, time_taken, REPEAT_COUNT*BYTE_SIZE_PER_FILE/(time_taken*1e6)))
+
+    start_time = time.time()
+    for i in range(REPEAT_COUNT):
+        tmp=read_shm_data(str(i))
+    time_taken = time.time()-start_time
+    print("Reading {0} file of size {1}Byte takes {2}s, on average {3}MB/s".format(
+        REPEAT_COUNT, BYTE_SIZE_PER_FILE, time_taken, REPEAT_COUNT*BYTE_SIZE_PER_FILE/(time_taken*1e6)))
+    
+    # start_time = time.time()
+    # for i in range(REPEAT_COUNT):
+    #     move_shm(str(i), str(i)+"_moved")
+    # time_taken = time.time()-start_time
+    # print("Moving {0} file of size {1}Byte takes {2}s, on average {3}B/s".format(
+    #     REPEAT_COUNT, BYTE_SIZE_PER_FILE, time_taken, REPEAT_COUNT*BYTE_SIZE_PER_FILE/time_taken))
+
+    start_time = time.time()
+    for i in range(REPEAT_COUNT):
+        remove_shm(str(i))
+    time_taken = time.time()-start_time
+    print("Removing {0} file of size {1}Byte takes {2}s, on average {3}MB/s".format(
+        REPEAT_COUNT, BYTE_SIZE_PER_FILE, time_taken, REPEAT_COUNT*BYTE_SIZE_PER_FILE/(time_taken*1e6)))
