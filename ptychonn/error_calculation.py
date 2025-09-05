@@ -61,7 +61,7 @@ def calc_error(amps, phs, true_amp, true_ph, point_size, overlap):
 
     return mse(stitched_amp_down, true_amp[:,:,32,32]), mse(stitched_phase_down, true_ph[:,:,32,32])
 
-def postsimulation_error_calc(skip_line=0) -> Tuple[float, float]:
+def postsimulation_error_calc(skip_line=0, large_dataset=False) -> Tuple[float, float]:
     void_image = np.ndarray(shape=(parameters.H, parameters.W), dtype=np.float64)
     # first search for IPR generated images
     # for them error will be zero
@@ -74,7 +74,10 @@ def postsimulation_error_calc(skip_line=0) -> Tuple[float, float]:
                 ipr_genidx_list.append(idx)
 
     # first load the ground truth data
-    Y_I, Y_ph = dataset.get_gtdata(skip_line=skip_line)
+    if not large_dataset:
+        Y_I, Y_ph = dataset.get_gtdata(skip_line=skip_line)
+    else:
+        Y_I, Y_ph = dataset.get_large_gtdata(skip_line=skip_line)
 
     # now calculate error for actually inferred data
     mse_amp_errorlist = []
