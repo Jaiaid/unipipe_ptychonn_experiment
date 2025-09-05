@@ -23,17 +23,22 @@ if [ $# -ge 6 -a $6 != "None" ];then
 fi
 
 if [ $# -ge 7 -a $7 != "None" ];then
+    DATASET_TYPE="--large-dataset"
+    echo $IPRRATE
+fi
+
+if [ $# -ge 8 -a $8 != "None" ];then
     TRAINVALIDFLAG="--validation-training"
     echo $TRAINVALIDFLAG
 fi
 
-if [ $# -eq 8 -a $8 != "None" ];then
+if [ $# -eq 9 -a $9 != "None" ];then
     ratio=$8
     RATIO="-iprfrac "${ratio}
     echo $RATIO
 fi
 
-if [ $# -eq 9 ];then
+if [ $# -eq 10 ];then
     inferbsfactor=$9
     INFFACT="-inffac "${inferbsfactor}
     echo $INFFACT
@@ -52,7 +57,7 @@ set -x
 
 EXP_SCRIPT=unipipe.py
 
-python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $RATIO $INFFRAC $TRAINVALIDFLAG --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
+python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
 UNIPIPE_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &
