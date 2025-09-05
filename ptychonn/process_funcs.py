@@ -131,7 +131,8 @@ def train(model, trainloader, epoch, bs, chkpt_path, device="cuda", lr=1e-3,
     return metrics
 
 def unipipe_traininfer(model, trainloader, teststream:datastream.DataStream, result_fiilup_list, epoch, trainbs, inferbs,
-                       chkpt_path, device="cuda", lr=1e-3, time_limit=None, logger:fastlogger.FastLogger=None, constant_bs=False, inffrac=1.0):
+                       chkpt_path, device="cuda", lr=1e-3, time_limit=None, logger:fastlogger.FastLogger=None,
+                       constant_bs=False, inffrac=1.0):
     logger.log("UNIPIPE BEGIN")
     logger.log("UNIPIPE TRAINING DATASET SIZE", len(trainloader.dataset))
     logger.log("UNIPIPE TRAINING BATCH SIZE", trainbs)
