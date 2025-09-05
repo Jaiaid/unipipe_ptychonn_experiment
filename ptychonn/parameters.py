@@ -5,9 +5,16 @@ SEED = 0
 # Iterative Phase Retrieval Throughput
 IPR_THROUGHPUT = 16
 
+# for smaller data
 H,W = 64,64
 IMGCOUNT = 161 # How many image
 DIFFRLINE = 161 # How many lines per image
+# for larger data
+H_L,W_L = 128,128
+DIFFRLINE_L = 186 # How many lines per image
+SCANPOINT_L = 186 # How many scanpoint per line
+
+
 NLINES = 5 #How many lines of data to use for training?
 NLTEST = 60 #How many lines for the test set?
 VALID_PERCENTAGE = 5
@@ -36,6 +43,12 @@ EPOCHS = 1000
 ROOT_DIR = "../../"
 DATA_DIFFR_PATH = os.path.join(ROOT_DIR, 'data/20191008_39_diff.npz')
 REAL_SPACE_PATH = os.path.join(ROOT_DIR, 'data/20191008_39_amp_pha_10nm_full.npy')
+LARGE_DATASET_DIR = os.path.join(ROOT_DIR, 'data/Tao_tungsten_pattern_data')
+LARGE_DATASET_FILE = "data_train_meanSubStdData.h5"
+LARGE_DATASET_DIFFRCOUNT = 34596
+# LARGE_DATASET_VALID_FILELIST = ["scan205.npz", "scan221.npz", "scan222.npz", "scan223.npz", "scan257.npz"]
+
+
 
 SHM_MARKER_TRANSMIT_START = "PTYCHO_STREAM_TRANSMIT_START"
 SHM_MARKER_TRANSMIT_END = "PTYCHO_STREAM_TRANSMIT_END"
