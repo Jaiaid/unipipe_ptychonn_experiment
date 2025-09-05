@@ -37,11 +37,11 @@ def estimate_T_IPR(
 
     return max(
         1/phase_retrieval_genrate,
-        deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        # min(
-        #     deadline_sec,
-        #     deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        # )
+        # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        min(
+            deadline_sec,
+            deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        )
     )
 
 def multicontext_inferonly_process(
@@ -76,6 +76,7 @@ def multicontext_inferonly_process(
             infer_count = infer_batch.shape[0]
             total_consumed += infer_count
             total_iter_count += 1
+            logger.log("MULTICONTEXT INFER BS", infer_count)
         except Exception as e:
             print(e)
             continue
@@ -175,6 +176,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("--allckpttest", "-ckpttest", action="store_true", help="if all checkpoints will be saved and tested with inference data")
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
+    arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
+    arg_parser.add_argument("--model-type", "-type", type="str", choice=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
+    
     # get the arguments
     args = arg_parser.parse_args()
 
@@ -190,12 +194,13 @@ if __name__ == "__main__":
             args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w") 
 
     # init the model
-    model = ptychonn.model.recon_model()
+    model = ptychonn.model.get_model(type_name=args.model_type)
     if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
         model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
     else:
         print("Pretrained Model Not Found...Exiting")
         exit()
+
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
     infer_datareader.set_len(args.datarate * args.interval_duration)
@@ -220,8 +225,13 @@ if __name__ == "__main__":
     current_time = start_time
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
-    # first interval data is used to pretrain the model
-    total_runtime = (args.interval_count - 1) * args.interval_duration
+    
+    if args.large_dataset:
+        total_runtime = args.interval_count * args.interval_duration
+    else:
+        # first interval data is used to pretrain the model
+        total_runtime = (args.interval_count - 1) * args.interval_duration
+
     total_consumed = 0
 
     # to give producer time to put first data
@@ -284,7 +294,9 @@ if __name__ == "__main__":
             pass
 
     # postmortem of data, calculate error
-    amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(skip_line=args.skip_line_pretrained)
+    amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(
+        skip_line=args.skip_line_pretrained, large_dataset=args.large_dataset
+    )
 
     with open(args.csvlog_file, "w") as fout:
         # amp error, ph error, nn amp error, nn ph error

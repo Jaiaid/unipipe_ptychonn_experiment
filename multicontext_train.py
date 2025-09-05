@@ -39,28 +39,13 @@ def estimate_T_IPR(
 
     return max(
         1/phase_retrieval_genrate,
-        deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        # min(
-        #     deadline_sec,
-        #     deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        # )
+        # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        min(
+            deadline_sec,
+            deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        )
     )
 
-# init the model
-model = ptychonn.model.recon_model()
-if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-    model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
-else:
-    print("Pretrained Model Not Found...Exiting")
-    exit()
-
-iter_per_epoch = np.floor(1/64) + 1
-step_size = 6 * iter_per_epoch
-criterion = torch.nn.L1Loss()
-optimizer = torch.optim.Adam(model.parameters(), lr = ptychonn.parameters.LR)
-scheduler = torch.optim.lr_scheduler.CyclicLR(
-    optimizer, base_lr=ptychonn.parameters.LR/10, max_lr=ptychonn.parameters.LR,
-    step_size_up=step_size, cycle_momentum=False, mode='triangular2')
 
 def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
                        trainbs, epoch_count, datarate, deadline_sec,
@@ -258,9 +243,27 @@ if __name__ == "__main__":
     arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
     arg_parser.add_argument("--inffrac", "-inffrac", type=float, default=1.0, help="how much factor to multiply with infer bs")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
-
+    arg_parser.add_argument("--model-type", "-type", type="str", choice=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
+    
     # get the arguments
     args = arg_parser.parse_args()
+
+    # init the model
+    model = ptychonn.model.get_model(type_name=args.model_type)
+    if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
+        model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+    else:
+        print("Pretrained Model Not Found...Exiting")
+        exit()
+    # taken from paper's code
+    # if optimizer_objects is None:
+    iter_per_epoch = 1
+    step_size = 6
+    criterion = torch.nn.L1Loss()
+    optimizer = torch.optim.Adam(model.parameters(), lr = ptychonn.parameters.LR)
+    scheduler = torch.optim.lr_scheduler.CyclicLR(
+        optimizer, base_lr=ptychonn.parameters.LR/10, max_lr=ptychonn.parameters.LR,
+        step_size_up=step_size, cycle_momentum=False, mode='triangular2')
 
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
@@ -295,8 +298,13 @@ if __name__ == "__main__":
     current_time = start_time
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
-    # first interval data is used to pretrain the model
-    total_runtime = (args.interval_count - 1) * args.interval_duration
+
+    if args.large_dataset:
+        total_runtime = args.interval_count * args.interval_duration
+    else:
+        # first interval data is used to pretrain the model
+        total_runtime = (args.interval_count - 1) * args.interval_duration
+    
     trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
 
     # to give producer time to put first data
