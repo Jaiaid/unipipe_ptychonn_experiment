@@ -4,27 +4,13 @@ import numpy as np
 import os
 import time
 import argparse
+import h5py
 
-import ipc
-import parameters
+from skimage.transform import resize
 
-
-def get_gtdata(skip_line=0) -> np.ndarray:
-    ground_truth_data = np.load(parameters.REAL_SPACE_PATH)
-    ground_truth_amp = np.abs(ground_truth_data)
-    ground_truth_ph = np.angle(ground_truth_data)
-
-    # we will generate the data array by reading each line from ground truth amp. and phase data
-    for i in range(skip_line, parameters.DIFFRLINE):
-        if i == skip_line:
-            Y_I = ground_truth_amp[i, :].reshape(-1,parameters.H,parameters.W)
-            Y_phi = ground_truth_ph[i, :].reshape(-1,parameters.H,parameters.W)
-        else:
-            Y_I = np.vstack((Y_I, ground_truth_amp[i, :].reshape(-1,parameters.H,parameters.W)))
-            Y_phi = np.vstack((Y_phi, ground_truth_ph[i, :].reshape(-1,parameters.H,parameters.W)))
-
-    return Y_I, Y_phi
-
+from ptychonn import ipc
+from ptychonn import parameters
+from ptychonn import dataset
 
 # PERFORMANCE MODEL 1
 # Phase Retrieval generation time length without any skipping
@@ -36,11 +22,11 @@ def estimate_T_IPR(
 
     return max(
         1/phase_retrieval_genrate,
-        deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        # min(
-        #     deadline_sec,
-        #     deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        # )
+        # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        min(
+            deadline_sec,
+            deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+        )
     )
     # return deadline_sec
     # return phase_retrieval_genrate * deadline_sec / (acquisition_rate - phase_retrieval_genrate)
@@ -81,12 +67,17 @@ if __name__=="__main__":
     parser.add_argument("--interval-count", "-icount", type=int, help="how many interval to run for")
     parser.add_argument("--interval-duration", "-idur", type=int, required=True, help="length of interval in seconds")
     parser.add_argument("--interval-one-oracle", "-i", action="store_true", help="first interval all ground truth data will be made available")
+    parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
     
     args = parser.parse_args()
 
     # ground truth data will be 161x161 (parameters.DIFFRLINE X parameters.DIFFRLINE) 
     # for each probe point in a 161x161 probe field we will have ground truth of 64x64 (parameters.H X parameters.W)
-    gt_data_i, gt_data_ph = get_gtdata(skip_line=args.skip_line_pretrained)
+    if args.large_dataset:
+        gt_data_i, gt_data_ph = dataset.get_large_gtdata(skip_line=args.skip_line_pretrained)
+    else:
+        gt_data_i, gt_data_ph = dataset.get_gtdata(skip_line=args.skip_line_pretrained)
+
     total_data = gt_data_i.shape[0] * gt_data_i.shape[1]
 
     # generation state
@@ -107,8 +98,9 @@ if __name__=="__main__":
     print(time_stretch_continuous_data_process, skip_data_idx)
 
     # signal finish of initiation
+    print("signaling producer")
     signal_producer()
-    print("starting retrieval", time.time())
+    print("waiting for produce acknowledgement of starting", time.time())
     # blockingwait until data streaming start
     producer_transmit_wait()
     print("data capture start", time.time())

@@ -37,11 +37,11 @@ for c in $INTERVAL_COUNT;do
         rm -r /dev/shm/PTYCHO_STREAM*
         set -x
 
-        python3 ptychonn/datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
+        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -136,11 +136,11 @@ for c in $INTERVAL_COUNT;do
         
         set -x
 
-        python3 ptychonn/datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
+        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 ptychonn/phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 

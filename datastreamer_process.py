@@ -16,22 +16,14 @@ Thereofore, conusmer of the data has to do the followings
 import numpy as np
 import time
 import argparse
-
-import ipc
-import parameters
+import h5py
+import os
 
 from skimage.transform import resize
 
-def get_diffrdata(skip_line=0) -> np.ndarray:
-    diffr_data = np.load(parameters.DATA_DIFFR_PATH)["arr_0"]
-
-    diffr_data_red = np.zeros((diffr_data.shape[0]-skip_line,diffr_data.shape[1],64,64), np.float32)
-    for i in range(skip_line, diffr_data.shape[0]):
-        for j in range(diffr_data.shape[1]):
-            diffr_data_red[i-skip_line,j] = resize(diffr_data[i, j,32:-32,32:-32],(64,64),preserve_range=True, anti_aliasing=True)
-            diffr_data_red[i-skip_line,j] = np.where(diffr_data_red[i-skip_line,j]<3,0,diffr_data_red[i-skip_line,j])
-
-    return diffr_data_red
+from ptychonn import ipc
+from ptychonn import parameters
+from ptychonn import dataset
 
 
 # the synchronization of transmission and producing like following
@@ -63,11 +55,16 @@ if __name__=="__main__":
     parser.add_argument("--no-sync", "-nsync", action="store_true", help="no synchronization with consumer, needed if run independently")
     parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     parser.add_argument("--debug-log", "-debug", action="store_true", help="debug message print")
+    parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
 
     args = parser.parse_args()
 
     # diffr data will be 64x64 for each probe point in a 161x161 probe field
-    diffr_data = get_diffrdata(skip_line=args.skip_line_pretrained)
+    if not args.large_dataset:
+        diffr_data = dataset.get_diffrdata(skip_line=args.skip_line_pretrained)
+    else:
+        diffr_data = dataset.get_diffrdata_large(skip_line=args.skip_line_pretrained)
+    
     total_image_count = diffr_data.shape[0] * diffr_data.shape[1]
 
     # transmission state
@@ -85,11 +82,13 @@ if __name__=="__main__":
     transmission_list = []
 
     # wait for consumer to finish initiation
+    print("waiting for consumer to join")
     if not args.no_sync:
         consumer_init_wait()
     # indicate start of activity
     print("starting transmission", time.time())
     signal_consumer()
+
 
     start_timestamp = time.time()
     data_interval_start_timestamp = start_timestamp
@@ -172,7 +171,8 @@ if __name__=="__main__":
         # rate,deadline_msec,total,consumed,missed,transmission time, total time
         fout.write(
             "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}\n".format(
-                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed, missed_after_evaluation_time,(missed-missed_after_evaluation_time)/current_transmit_idx, consumed_nonpretrained, missed_nonpretrained,
+                args.rate, args.deadline_msec, current_transmit_idx, consumed, missed, missed_after_evaluation_time,
+                (missed-missed_after_evaluation_time)/current_transmit_idx, consumed_nonpretrained, missed_nonpretrained,
                 transmission_end_time - start_timestamp, total_time
             )
         )
