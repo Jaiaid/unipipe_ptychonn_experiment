@@ -18,6 +18,11 @@ skipline=$5
 iprt=$6
 
 if [ $# -ge 7 -a $7 != "None" ];then
+    MODEL_TYPE="--model-type "$7
+    echo $IPRRATE
+fi
+
+if [ $# -ge 8 -a $8 != "None" ];then
     DATASET_TYPE="--large-dataset"
     echo $iprt
 fi
@@ -34,7 +39,7 @@ set -x
 
 EXP_SCRIPT=pretrained.py
 
-python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -iprt ${iprt} -csvlog tmp.csv $DATASET_TYPE &
+python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -iprt ${iprt} -csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE &
 PRETRAIN_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

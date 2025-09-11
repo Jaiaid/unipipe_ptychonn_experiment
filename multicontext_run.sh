@@ -26,11 +26,16 @@ if [ $# -ge 6 -a $6 != "None" ];then
 fi
 
 if [ $# -ge 7 -a $7 != "None" ];then
+    MODEL_TYPE="--model-type "$7
+    echo $IPRRATE
+fi
+
+if [ $# -ge 8 -a $8 != "None" ];then
     DATASET_TYPE="--large-dataset"
     echo $IPRRATE
 fi
 
-if [ $# -eq 8 ];then
+if [ $# -eq 9 ];then
     BSARG="-bs "${bs}
     echo $BSARG
 fi
@@ -45,11 +50,11 @@ set -x
 
 # deadlinemsec=$((1000*$accumulationallow/$rate))
 
-python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv &
+python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE &
 TRAIN_PID=$!
 
 # it needs dataset type information as it will 
-python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv &
+python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv $MODEL_TYPE &
 INFER_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &
