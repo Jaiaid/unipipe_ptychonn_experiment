@@ -22,7 +22,7 @@ DSCOUNT=$((186*186))
 DSCOUNT_PER_INTERVAL=$((DSCOUNT/INTERVAL_COUNT))
 SKIPLINE=0
 
-EXP_RESULT_DIR=result_logs/largedataset
+EXP_RESULT_DIR=result_logs/largedataset_dratevariation
 mkdir -p $EXP_RESULT_DIR
 
 mkdir -p $EXP_RESULT_DIR/pretrained
@@ -48,7 +48,7 @@ for c in $INTERVAL_COUNT;do
             echo $IPR_PROCESS_PID
 
             # True for per iter validation activation
-            bash pretrained_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt --large-dataset
+            bash pretrained_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 1.25M --large-dataset
             set +x
             while ps -p ${STREAM_PROCESS_PID} > /dev/null
             do
@@ -99,7 +99,7 @@ for c in $INTERVAL_COUNT;do
             echo $IPR_PROCESS_PID
 
             # True for per iter validation activation
-            bash unipipe_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt --large-dataset
+            bash unipipe_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 1.25M --large-dataset
             set +x
             while ps -p ${STREAM_PROCESS_PID} > /dev/null
             do
@@ -152,7 +152,7 @@ for c in $INTERVAL_COUNT;do
             IPR_PROCESS_PID=$!
             echo $IPR_PROCESS_PID
 
-            bash multicontext_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt --large-dataset 
+            bash multicontext_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 1.25M --large-dataset 
             set +x
             while ps -p ${STREAM_PROCESS_PID} > /dev/null
             do
