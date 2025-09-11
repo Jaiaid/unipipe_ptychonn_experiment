@@ -3,7 +3,7 @@ import math
 
 def estimate_T_IPR(
         phase_retrieval_genrate: float, acquisition_rate: float,
-        deadline_sec: float, nn_uf:float=0.0005, nn_ub:float=0.0005):
+        deadline_sec: float, nn_uf:float=0.0005, nn_ub:float=0.0015):
 
     return max(
         1/phase_retrieval_genrate,
