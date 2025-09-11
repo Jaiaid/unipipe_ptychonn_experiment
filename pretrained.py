@@ -32,20 +32,6 @@ import ptychonn.shm_datareader
 import logfast.fastlogger
 
 
-def estimate_T_IPR(
-        phase_retrieval_genrate: float, acquisition_rate: float,
-        deadline_sec: float):
-
-    return max(
-        1/phase_retrieval_genrate,
-        # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        min(
-            deadline_sec,
-            deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        )
-    )
-
-
 def pretrained_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
         inferdatalist_fileobj, ipriteration_no,
@@ -164,18 +150,23 @@ if __name__ == "__main__":
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
-    
+    arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
     
     # get the arguments
     args = arg_parser.parse_args()
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-        model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
-    else:
-        print("Pretrained Model Not Found...Exiting")
-        exit()
+    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    # other variants are just for performance test
+    if args.model_type == "1.25M":
+        if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
+            model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+        else:
+            print("Pretrained Model Not Found...Exiting")
+            exit()
+    # GPU environment is assumend
+    model.to("cuda")
 
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
@@ -253,7 +244,7 @@ if __name__ == "__main__":
             # print("first infer data selection takes {0}s".format(time.time() - t1))
             ipriter_time_limit = estimate_T_IPR(
                 phase_retrieval_genrate=args.ipr_throughput, acquisition_rate=args.datarate,
-                deadline_sec=deadline_sec)
+                deadline_sec=deadline_sec, nn_uf=nnuf, nn_ub=nn_ub)
 
             # args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
             trainsize = int(round(ipriter_time_limit * args.ipr_throughput))

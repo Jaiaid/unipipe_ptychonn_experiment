@@ -33,19 +33,6 @@ import multicontext_parameters
 # for logging
 import logfast.fastlogger
 
-def estimate_T_IPR(
-        phase_retrieval_genrate: float, acquisition_rate: float,
-        deadline_sec: float):
-
-    return max(
-        1/phase_retrieval_genrate,
-        # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        min(
-            deadline_sec,
-            deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        )
-    )
-
 
 def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
                        trainbs, epoch_count, datarate, deadline_sec,
@@ -243,18 +230,25 @@ if __name__ == "__main__":
     arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
     arg_parser.add_argument("--inffrac", "-inffrac", type=float, default=1.0, help="how much factor to multiply with infer bs")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
-    arg_parser.add_argument("--model-type", "-type", type="str", choice=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
+    arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
+    arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
     
     # get the arguments
     args = arg_parser.parse_args()
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-        model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
-    else:
-        print("Pretrained Model Not Found...Exiting")
-        exit()
+    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    # other variants are just for performance test
+    if args.model_type == "1.25M":
+        if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
+            model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+        else:
+            print("Pretrained Model Not Found...Exiting")
+            exit()
+    # GPU environment is assumed
+    model.to("cuda")
+
     # taken from paper's code
     # if optimizer_objects is None:
     iter_per_epoch = 1
@@ -340,8 +334,10 @@ if __name__ == "__main__":
             # start of unipipe initiation and call
             
             ipriter_time_limit = deadline_sec #args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
-            ipriter_time_limit = estimate_T_IPR(
-                phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec, acquisition_rate=args.datarate)
+            ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+                phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
+                acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub)
+            
             trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
             infersize = int(round(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
             train_readidx_curpos = cur_ipriteration*(trainsize + infersize - 1)
