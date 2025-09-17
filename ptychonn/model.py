@@ -410,7 +410,7 @@ def benchmark_model(model, device='cuda', bs=64, warmup=5, iters=10):
         output = model(input_tensor)
         torch.cuda.synchronize()
         f_passtime += time.time() - start
-        loss = criterion(output[0], target)
+        loss = criterion(output[0], target) + criterion(output[1], target)
         loss.backward()
         optimizer.step()
         torch.cuda.synchronize()
