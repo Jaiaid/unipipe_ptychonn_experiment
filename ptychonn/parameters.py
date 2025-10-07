@@ -24,9 +24,10 @@ N_VALID = 805 #How much to reserve for validation
 
 PRETRAIN_EPOCHS = 10
 NGPUS = 1
-TRAIN_BATCH_SIZE = NGPUS * 64
-# is 1 because we are considering continuous data stream
-INFERENCE_BATCH_SIZE = 64
+TRAIN_BATCH_SIZE = NGPUS * 32
+# although continuous data stream, we are considering accumulation and infer
+# so can be  greater than 1
+INFERENCE_BATCH_SIZE = 32
 LR = NGPUS * 1e-3
 
 # this threshold helps determine when to stop training
