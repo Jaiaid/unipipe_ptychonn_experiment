@@ -183,7 +183,9 @@ if __name__ == "__main__":
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    # _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    nn_uf = 0.00027
+    nn_ub = 0.00036
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
