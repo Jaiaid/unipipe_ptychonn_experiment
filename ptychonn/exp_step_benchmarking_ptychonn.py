@@ -13,8 +13,8 @@ from nvitop import Device, ResourceMetricCollector
 BATCH_SIZES = list(range(1, 129)) # [256, 128, 64, 32, 16, 8, 4, 2, 1]
 LEARNING_RATE = 0.001
 IMAGECOUNT_PER_RUN = 204800000 # 2048
-ITERATION_COUNT_PER_RUN = 25 # 10000000
-WARMUP_ITERATION = 5
+ITERATION_COUNT_PER_RUN = 220 # 10000000
+WARMUP_ITERATION = 20
 
 DEVTYPE_GPU = 1
 DEVTYPE_CPU = 0
@@ -100,6 +100,7 @@ def training_all_param_update(nn_model: torch.nn.Module, dataloader: torch.utils
             # collecting after measuring the time to not affect time measurement due to metric collection overhead
             # As we are collecting mean, we should still see the effect from last sampling 
             metrics = collector.collect()
+
             gpu_utilization_list.append(
                 [
                     metrics["test/timestamp"],
