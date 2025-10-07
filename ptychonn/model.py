@@ -382,8 +382,6 @@ def benchmark_model(model, device='cuda', bs=64, warmup=5, iters=10):
     model.train()  # Ensure model is in training mode
     
     # Create dummy input and target
-    input_tensor = torch.randn(bs, 1, 64, 64, device=device, requires_grad=True)
-    target = torch.randn(bs, 1, 64, 64, device=device)
     
     # for memory statistics
     mem_cuda = []
@@ -393,6 +391,13 @@ def benchmark_model(model, device='cuda', bs=64, warmup=5, iters=10):
 
     # Warm-up iterations (not timed)
     for _ in range(warmup):
+        input_tensor = torch.randn(bs, 1, 64, 64, device="cpu", requires_grad=True)
+        target = torch.randn(bs, 1, 64, 64, device="cpu")
+        
+        input_tensor = input_tensor.to("cuda")
+        target = target.to("cuda")
+        torch.cuda.synchronize()
+
         optimizer.zero_grad()
         output = model(input_tensor)
         loss = criterion(output[0], target)
@@ -405,6 +410,13 @@ def benchmark_model(model, device='cuda', bs=64, warmup=5, iters=10):
     f_passtime = 0
     b_passtime = 0
     for _ in range(iters):
+        input_tensor = torch.randn(bs, 1, 64, 64, device="cpu", requires_grad=True)
+        target = torch.randn(bs, 1, 64, 64, device="cpu")
+        
+        input_tensor = input_tensor.to("cuda")
+        target = target.to("cuda")
+        torch.cuda.synchronize()
+
         start = time.time()
         optimizer.zero_grad()
         output = model(input_tensor)
