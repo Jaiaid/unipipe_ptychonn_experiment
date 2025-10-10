@@ -312,6 +312,12 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     return metrics, total_consumed, total_missed, time_uf, time_ub
 
 
+# signal producer to indicate finish of initiation
+# then it will wait for transmission start
+# this is part of mechanism to synchronize start of transmission and processing
+def signal_producer():
+    ipc.create_shm_marker(parameters.SHM_MARKER_ML_INIT_FINISH)
+
 # blocking function to wait for producer to start transmission
 # this is part of mechanism to synchronize start of transmission and processing
 def producer_transmit_wait():
@@ -420,7 +426,10 @@ if __name__ == "__main__":
             chkpt_path="dummy.pth", logger=logger, periter_validation=args.validation_training,
             time_limit=args.deadline/1000)
     logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
-    
+
+    # signal producer that done, needed if initiation become expensive
+    signal_producer()
+    # wait for producer to start transmission
     producer_transmit_wait()
     
     # training state controller variable initiation

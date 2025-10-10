@@ -36,6 +36,9 @@ def consumer_init_wait():
     # wait for IPR process to finish initiation
     while not ipc.exist_shm(parameters.SHM_MARKER_IPR_INIT_FINISH):
         pass
+    # wait for ML process to finish initiation
+    while not ipc.exist_shm(parameters.SHM_MARKER_ML_INIT_FINISH):
+        pass
 
 
 def signal_consumer():

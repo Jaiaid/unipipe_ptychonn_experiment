@@ -193,6 +193,11 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 
     return metrics, cur_epoch
 
+# signal producer to indicate finish of initiation
+# then it will wait for transmission start
+# this is part of mechanism to synchronize start of transmission and processing
+def signal_producer():
+    ipc.create_shm_marker(parameters.SHM_MARKER_ML_INIT_FINISH)
 
 # blocking function to wait for producer to start transmission
 # this is part of mechanism to synchronize start of transmission and processing
@@ -282,6 +287,10 @@ if __name__ == "__main__":
         logger=logger, time_limit=args.deadline/1000)
     logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
+    # signal producer that done, needed if initiation become expensive
+    # doing it only for training process assuming inference initiation is faster
+    # needs a better approach
+    signal_producer()
     # wait to synchronize time calculation with produce process
     producer_transmit_wait()
     print("multicontext train consumption start ", time.time())
