@@ -1,6 +1,7 @@
 
 
 import numpy as np
+import math
 import os
 import time
 import argparse
@@ -11,23 +12,24 @@ from skimage.transform import resize
 from ptychonn import ipc
 from ptychonn import parameters
 from ptychonn import dataset
+from ptychonn import perf_model
 
 # PERFORMANCE MODEL 1
 # Phase Retrieval generation time length without any skipping
 # Assumption:
 # 1/phase_retrieval_genrate < deadline_sec
-def estimate_T_IPR(
-        phase_retrieval_genrate: float, acquisition_rate: float,
-        deadline_sec: float):
+# def estimate_T_IPR(
+#         phase_retrieval_genrate: float, acquisition_rate: float,
+#         deadline_sec: float):
 
-    return max(
-        1/phase_retrieval_genrate,
-        # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        min(
-            deadline_sec,
-            deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
-        )
-    )
+#     return max(
+#         1/phase_retrieval_genrate,
+#         # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+#         min(
+#             deadline_sec,
+#             deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.00027+phase_retrieval_genrate*0.00036)
+#         )
+#     )
     # return deadline_sec
     # return phase_retrieval_genrate * deadline_sec / (acquisition_rate - phase_retrieval_genrate)
 
@@ -67,7 +69,9 @@ if __name__=="__main__":
     parser.add_argument("--interval-count", "-icount", type=int, help="how many interval to run for")
     parser.add_argument("--interval-duration", "-idur", type=int, required=True, help="length of interval in seconds")
     parser.add_argument("--interval-one-oracle", "-i", action="store_true", help="first interval all ground truth data will be made available")
-    parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
+    parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be used")
+    parser.add_argument("--unipipe-scheduler", "-unipipe", action="store_true", help="if working with unipipe scheduler")
+    parser.add_argument("--pretrained-scheduler", "-pretrained", action="store_true", help="if working with pretrained scheduler")
     
     args = parser.parse_args()
 
@@ -77,8 +81,6 @@ if __name__=="__main__":
         gt_data_i, gt_data_ph = dataset.get_large_gtdata(skip_line=args.skip_line_pretrained)
     else:
         gt_data_i, gt_data_ph = dataset.get_gtdata(skip_line=args.skip_line_pretrained)
-
-    total_data = gt_data_i.shape[0] * gt_data_i.shape[1]
 
     # generation state
     current_generate_idx = 0
@@ -90,11 +92,22 @@ if __name__=="__main__":
     deadline_sec = args.deadline_msec/1000
 
     # perf. model estimated property
-    time_stretch_continuous_data_process = estimate_T_IPR(
-        phase_retrieval_genrate=args.generation_rate,
-        acquisition_rate=args.acquisition_rate,
-        deadline_sec=deadline_sec)
-    skip_data_idx = round(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
+    if args.unipipe_scheduler:
+        time_stretch_continuous_data_process, _, _ = perf_model.estimate_T_IPR_unipipe(
+            phase_retrieval_genrate=args.generation_rate,
+            acquisition_rate=args.acquisition_rate,
+            deadline_sec=deadline_sec)
+    elif args.pretrained_scheduler:
+        time_stretch_continuous_data_process = perf_model.estimate_T_IPR_pretrained(
+            phase_retrieval_genrate=args.generation_rate,
+            acquisition_rate=args.acquisition_rate,
+            deadline_sec=deadline_sec)
+    else:
+        time_stretch_continuous_data_process = perf_model.estimate_T_IPR(
+            phase_retrieval_genrate=args.generation_rate,
+            acquisition_rate=args.acquisition_rate,
+            deadline_sec=deadline_sec)
+    skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
     print(time_stretch_continuous_data_process, skip_data_idx)
 
     # signal finish of initiation
@@ -112,7 +125,7 @@ if __name__=="__main__":
     # to give producer time to put first data
     time.sleep(1/args.acquisition_rate)
     # for cur_interval in range():#(args.interval_count):
-    while current_timestamp - start_timestamp < ((args.interval_count -1) * args.interval_duration):
+    while current_timestamp - start_timestamp < args.interval_count * args.interval_duration:
         cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
         ipc.create_shm_folder(cur_folder)
 
@@ -161,7 +174,7 @@ if __name__=="__main__":
         cur_ipriteration += 1
 
         # print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
-        current_generate_idx += skip_data_idx - 1
+        current_generate_idx += skip_data_idx
 
     print("==================================IPR Mock Status=================================")
     print("Data rate: {0}Hz".format(args.acquisition_rate))
@@ -183,4 +196,8 @@ if __name__=="__main__":
         )
 
     # cleanup
-    cleanup()
+    try:
+        cleanup()
+    except Exception as e:
+        print("Exception during cleanup:", e)
+    print("IPR mock process finished cleanup and exit")

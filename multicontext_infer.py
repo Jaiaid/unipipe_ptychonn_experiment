@@ -8,6 +8,7 @@
 
 import argparse
 import os
+import math
 import random
 import copy
 import time
@@ -17,6 +18,7 @@ import numpy as np
 import torch.utils
 import torch.utils.data
 
+import ptychonn.perf_model
 import ptychonn.model
 import ptychonn.dataset
 import ptychonn.parameters
@@ -30,6 +32,10 @@ import ptychonn.shm_datareader
 import multicontext_parameters
 # for logging
 import logfast.fastlogger
+
+
+# for checkpoint overhead experiment
+model_load_spenttime_list = []
 
 
 def multicontext_inferonly_process(
@@ -47,6 +53,8 @@ def multicontext_inferonly_process(
     # this is not needed I kept it from the beginning that's why not want to remove
     metrics = {}
     inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
+    # from profiled data, tuned for latency
+    inferbs = 64
     # next model indicates if the model which is being trained in separate context is loaded 
     # for completeion of <next_model> no. checkpoint
     next_model = 0
@@ -120,7 +128,9 @@ def multicontext_inferonly_process(
                 ), weights_only=False
             )
             model.to("cuda")
-            logger.log("MODEL LOAD TAKES", time.time() - model_load_time)
+            taken_time = time.time() - model_load_time
+            logger.log("MODEL LOAD TAKES", taken_time)
+            model_load_spenttime_list.append(taken_time)
             next_model += 1
 
         logger.log("ITERATION TIME", time.time() - iteration_start_time)
@@ -183,9 +193,12 @@ if __name__ == "__main__":
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    # _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    # from profiling data
+    # forward pass tuned for latency
+    # backward pass tuned for throughput
     nn_uf = 0.00027
-    nn_ub = 0.00036
+    nn_ub = 0.00027
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
@@ -220,12 +233,21 @@ if __name__ == "__main__":
     current_time = start_time
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
+
+    # estimate ipriteration time limit from perf. model
+    # for coordination with ground truth data generation
+    # although we are not training here, to make things fair with unipipe
+    # we have to generate some ground truth data
+    ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+        phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
+        acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+    )
     
     if args.large_dataset:
         total_runtime = args.interval_count * args.interval_duration
     else:
         # first interval data is used to pretrain the model
-        total_runtime = (args.interval_count - 1) * args.interval_duration
+        total_runtime = args.interval_count * args.interval_duration
 
     total_consumed = 0
 
@@ -260,16 +282,13 @@ if __name__ == "__main__":
             # infer_datareader.reposition()
             # print("first infer data selection takes {0}s".format(time.time() - t1))
             # ipriter_time_limit = deadline_sec# args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
-            ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
-                phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
-                acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub)
             
-            trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
-            infersize = int(round(ipriter_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+            trainsize = int(math.floor(ipriter_time_limit * args.ipr_throughput))
+            infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
             # for inference location on datastream repositioning
-            train_readidx_curpos = cur_ipriteration*(trainsize + infersize - 1)
+            train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
             logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)
-            infer_datareader.cur_readidx = train_readidx_curpos - infersize + 1
+            infer_datareader.cur_readidx = train_readidx_curpos + trainsize
             # set the reader length for the unipipe call
             # to handle initial boundary condition
             infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
@@ -300,4 +319,20 @@ if __name__ == "__main__":
         fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
 
     inferdatalist_file.close()
+
+    logger.log(
+        "MODEL RESTORE OVERHEADS", model_load_spenttime_list
+    )
+    logger.log(
+        "MODEL RESTORE OVERHEAD (MIN/AVG/MAX)", min(model_load_spenttime_list),
+        sum(model_load_spenttime_list)/len(model_load_spenttime_list),
+        max(model_load_spenttime_list)
+    )
     logger.persist(args.csvlog_file[:-4] + "_infer.log")
+
+    # print(
+    #     "Model Restore Mean Overhead: {0}s".format(
+    #         sum(model_load_spenttime_list)/len(model_load_spenttime_list)
+    #     )
+    # )
+    # print("Model Restore Overheads: ", model_load_spenttime_list)

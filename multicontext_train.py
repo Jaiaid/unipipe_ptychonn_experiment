@@ -20,6 +20,7 @@ import torch.utils
 import torch.utils.data
 import sklearn.metrics
 
+import ptychonn.perf_model
 import ptychonn.model
 import ptychonn.dataset
 import ptychonn.parameters
@@ -33,11 +34,14 @@ import multicontext_parameters
 # for logging
 import logfast.fastlogger
 
+# for checkpoint overhead experiment
+model_save_spenttime_list = []
+
 
 def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
-                       trainbs, epoch_count, datarate, deadline_sec,
-                       traindatalist_fileobj, ipriteration_no, 
-                       logger:logfast.fastlogger.FastLogger, chkpt_dir=None, time_limit=None):
+                       epoch_count, datarate, deadline_sec,
+                       traindatalist_fileobj, ipriteration_no,  
+                       logger:logfast.fastlogger.FastLogger, trainbs=64, chkpt_dir=None, time_limit=None):
 
     logger.log("MULTICONTEXT TRAIN BEGIN")
     logger.log("MULTICONTEXT TRAIN DATASET SIZE", len(trainloader))
@@ -161,8 +165,9 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             logger.log("MULTICONTEXT TRAIN INTERVAL REM. TIME", interval_remaining_time)
 
         # save model if loss is lower than before
-        if tot_loss / (total_iter_count + 1) < previous_loss:
-        # if True:
+        # if tot_loss / (total_iter_count + 1) < previous_loss:
+        if True:
+            model_save_start_time = time.time()
             ptychonn.process_funcs.update_saved_model(
                 model=model,
                 path=os.path.join(
@@ -173,6 +178,9 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             ptychonn.ipc.create_shm_marker(
                 os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)))
             
+            taken_time = time.time() - model_save_start_time
+            model_save_spenttime_list.append(taken_time)
+
             logger.log(
                 "CREATING CHECKPOINT",
                 os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)),
@@ -197,7 +205,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 # then it will wait for transmission start
 # this is part of mechanism to synchronize start of transmission and processing
 def signal_producer():
-    ipc.create_shm_marker(parameters.SHM_MARKER_ML_INIT_FINISH)
+    ptychonn.ipc.create_shm_marker(ptychonn.parameters.SHM_MARKER_ML_INIT_FINISH)
 
 # blocking function to wait for producer to start transmission
 # this is part of mechanism to synchronize start of transmission and processing
@@ -243,9 +251,12 @@ if __name__ == "__main__":
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    # _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
-    nn_uf = 0.00027
-    nn_ub = 0.00036
+    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    # from profiling data
+    # forward pass tuned for latency
+    # backward pass tuned for throughput
+    nn_uf = 0.0023
+    nn_ub = 0.00027
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
@@ -304,13 +315,24 @@ if __name__ == "__main__":
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
 
+    # estimate ipriteration time limit from perf. model
+    # for coordination with ground truth data generation
+    # although we are not training here, to make things fair with unipipe
+    # we have to generate some ground truth data
+    ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+        phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
+        acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+    )
+
     if args.large_dataset:
         total_runtime = args.interval_count * args.interval_duration
     else:
         # first interval data is used to pretrain the model
-        total_runtime = (args.interval_count - 1) * args.interval_duration
+        total_runtime = args.interval_count * args.interval_duration
     
     trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
+    # from profile data, tuned for throughput
+    trainbs = 64
 
     # to give producer time to put first data
     # time.sleep(1/args.datarate)
@@ -344,18 +366,15 @@ if __name__ == "__main__":
             # train_datareader.reposition()
             # start of unipipe initiation and call
             
-            ipriter_time_limit = deadline_sec #args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
-            ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
-                phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
-                acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub)
+            # ipriter_time_limit = deadline_sec #args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
             
-            trainsize = int(round(ipriter_time_limit * args.ipr_throughput))
-            infersize = int(round(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
-            train_readidx_curpos = cur_ipriteration*(trainsize + infersize - 1)
+            trainsize = int(math.floor(ipriter_time_limit * args.ipr_throughput))
+            infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
+            train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
 
             train_datareader.set_len(begin=train_readidx_curpos, end=train_readidx_curpos+trainsize-1)
-            epoch_count = ptychonn.parameters.EPOCHS
+            epoch_count = 1 # ptychonn.parameters.EPOCHS
         else:
             continue
             # print("first train data selection takes {0}s".format(time.time() - t1))
@@ -384,4 +403,14 @@ if __name__ == "__main__":
         #     pass
 
     traindatalist_file.close()
+
+    logger.log(
+        "MODEL SAVE OVERHEADS", model_save_spenttime_list
+    )
+    # logger.log(
+    #     "MODEL SAVE OVERHEAD (MIN/AVG/MAX)", min(model_save_spenttime_list),
+    #     sum(model_save_spenttime_list)/len(model_save_spenttime_list),
+    #     max(model_save_spenttime_list)
+    # )
+    
     logger.persist(args.csvlog_file[:-4] + "_train.log")

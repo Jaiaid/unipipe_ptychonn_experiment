@@ -122,6 +122,9 @@ def pretrained_inferonly_process(
 # then it will wait for transmission start
 # this is part of mechanism to synchronize start of transmission and processing
 def signal_producer():
+    # need to signal for phase retrieval init finish
+    # to keep the illusion that it is still two consumer one producer workflow
+    ptychonn.ipc.create_shm_marker(ptychonn.parameters.SHM_MARKER_IPR_INIT_FINISH)
     ptychonn.ipc.create_shm_marker(ptychonn.parameters.SHM_MARKER_ML_INIT_FINISH)
 
 # blocking function to wait for producer to start transmission
@@ -212,9 +215,9 @@ if __name__ == "__main__":
     cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
     # estimate ipriteration time limit from perf. model
-    # for coordination with ground truth data generation
-    # although we are not training here, to make things fair with unipipe
-    # we have to generate some ground truth data
+    # not neeeded to iterate as no ground truth generation involved
+    # we are still doing it just to reuse code from pretrained with unipipe scheduling
+    # we will just keep trainsize to 0
     ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR_pretrained(
         phase_retrieval_genrate=args.ipr_throughput, acquisition_rate=args.datarate,
         deadline_sec=deadline_sec, nn_uf=nn_uf, nn_ub=0
@@ -243,36 +246,27 @@ if __name__ == "__main__":
 
 
         ipriter_time_start = time.time()
-        # start of current interval processing
-        # checking for signal existance from IPR process
-        # this progression needs to be done irrespective of interval
-        # as IPR will keep running for data from interval 0 also (for which model is already trained)
-        # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
-        # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
-        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
-            cur_ipriteration += 1
-            logger.log("IPR ITERATION START", cur_ipriteration)
+        cur_ipriteration += 1
+        logger.log("IPR ITERATION START", cur_ipriteration)
 
-            # update the current inference idx and training data idx
-            # the files are named in such a way that
-            # t1 = time.time()
-            # infer_datareader.reposition()
-            # print("first infer data selection takes {0}s".format(time.time() - t1))
+        # update the current inference idx and training data idx
+        # the files are named in such a way that
+        # t1 = time.time()
+        # infer_datareader.reposition()
+        # print("first infer data selection takes {0}s".format(time.time() - t1))
 
-            # args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
-            trainsize = int(math.floor(ipriter_time_limit * args.ipr_throughput))
-            infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+        # args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
+        trainsize = 0
+        infersize = int(math.floor(ipriter_time_limit * args.datarate)) # same as args.ipr_throughput * deadline_sec
 
-            # for inference location on datastream repositioning
-            train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
-            logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)
-            infer_datareader.cur_readidx = train_readidx_curpos + trainsize
-            # set the reader length for the unipipe call
-            # to handle initial boundary condition
-            infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
-        else:
-            continue
-
+        # for inference location on datastream repositioning
+        train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
+        logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)
+        infer_datareader.cur_readidx = train_readidx_curpos + trainsize
+        # set the reader length for the unipipe call
+        # to handle initial boundary condition
+        infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
+        
         # put unipipe traininfer for one ipriteration data here
         metrics, consumed = pretrained_inferonly_process(
             model, infer_datareader,
