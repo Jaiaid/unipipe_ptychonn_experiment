@@ -15,6 +15,7 @@ pushd $ROOTDIR
 INTERVAL_COUNT=5
 # set the particular datarate and ipr throughput
 IPR_THROUGHPUT_TUNED=16
+DATARATE=2000
 
 # DATA SAMPLE COUNT
 # THIS IS IMPORTANT AS IT WILL DETERMINE THE DURATION FOR GIVEN INTERVAL COUNT
@@ -25,10 +26,10 @@ SKIPLINE=33
 EXP_RESULT_DIR=result_logs/smalldataset_deadlinevariation
 mkdir -p $EXP_RESULT_DIR
 
-mkdir -p $EXP_RESULT_DIR/pretrained
+mkdir -p $EXP_RESULT_DIR/pretrained_noipr
 for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
-    rate=3000
+    rate=$DATARATE
     dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
     for deadlinemsec in 80 160 320
@@ -42,7 +43,44 @@ for c in $INTERVAL_COUNT;do
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        # True for per iter validation activation
+        bash pretrained_noipr_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt
+        set +x
+        while ps -p ${STREAM_PROCESS_PID} > /dev/null
+        do
+            # echo "data streamer alive"
+            sleep 1
+        done
+
+        set -x
+
+        # move generated files for later analysis
+        mv transmission_state.csv ${EXP_RESULT_DIR}/pretrained_noipr/pretrained_noipr_transmission_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv tmp.csv ${EXP_RESULT_DIR}/pretrained_noipr/pretrained_noipr_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv tmp.log ${EXP_RESULT_DIR}/pretrained_noipr/pretrained_noipr_${c}_${deadlinemsec}_${rate}_${iprt}.log
+        mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained_noipr/pretrained_noipr_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv /dev/shm/inferdatalist_pretrained_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/pretrained_noipr/inferdatalist_pretrained_noipr_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+    done
+done
+
+mkdir -p $EXP_RESULT_DIR/pretrained
+for c in $INTERVAL_COUNT;do
+    iprt=$IPR_THROUGHPUT_TUNED
+    rate=$DATARATE
+    dur=$(($DSCOUNT_PER_INTERVAL/$rate))
+    
+    for deadlinemsec in 80 160 320
+    do
+        set +x
+        rm /dev/shm/*.raw
+        rm -r /dev/shm/PTYCHO_STREAM*
+        set -x
+
+        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
+        STREAM_PROCESS_PID=$!
+        echo $STREAM_PROCESS_PID
+
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -pretrained &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -71,12 +109,11 @@ for c in $INTERVAL_COUNT;do
         mv /dev/shm/inferdatalist_pretrained_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/pretrained/inferdatalist_pretrained_${c}_${deadlinemsec}_${rate}_${iprt}.csv
     done
 done
-exit
 
 mkdir -p $EXP_RESULT_DIR/unipipe
 for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
-    rate=3000
+    rate=$DATARATE
     dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
     for deadlinemsec in 80 160 320
@@ -90,7 +127,7 @@ for c in $INTERVAL_COUNT;do
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipe &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -173,7 +210,7 @@ done
 mkdir -p $EXP_RESULT_DIR/multicontext
 for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
-    rate=3000
+    rate=$DATARATE
     dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
     for deadlinemsec in 80 160 320;

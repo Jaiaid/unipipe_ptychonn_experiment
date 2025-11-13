@@ -14,6 +14,9 @@ CONSTANTTRAINBS= #--constant-trainbs
 pushd $ROOTDIR
 INTERVAL_COUNT=5
 
+IPR_THROUGHPUT_TUNED=160
+DEADLINEMSEC=80
+DATARATE=2000
 
 # DATA SAMPLE COUNT
 # THIS IS IMPORTANT AS IT WILL DETERMINE THE DURATION FOR GIVEN INTERVAL COUNT
@@ -26,9 +29,9 @@ mkdir -p $EXP_RESULT_DIR
 
 mkdir -p $EXP_RESULT_DIR/unipipe
 for c in $INTERVAL_COUNT;do
-    iprt=16
-    deadlinemsec=80
-    rate=500
+    iprt=$IPR_THROUGHPUT_TUNED
+    deadlinemsec=$DEADLINEMSEC
+    rate=$DATARATE
 
     for modeltype in 1.25M 5M 10M 20M 100M 200M
     do
@@ -42,12 +45,12 @@ for c in $INTERVAL_COUNT;do
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipe &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
         # True for per iter validation activation
-        bash unipipe_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt $modeltype
+        bash unipipe_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 32 $modeltype
         set +x
         while ps -p ${STREAM_PROCESS_PID} > /dev/null
         do
@@ -76,9 +79,9 @@ done
 
 mkdir -p $EXP_RESULT_DIR/multicontext
 for c in $INTERVAL_COUNT;do
-    iprt=16
-    deadlinemsec=80
-    rate=500
+    iprt=$IPR_THROUGHPUT_TUNED
+    deadlinemsec=$DEADLINEMSEC
+    rate=$DATARATE
 
     for modeltype in 1.25M 5M 10M 20M 100M 200M
     do
