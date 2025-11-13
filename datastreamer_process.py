@@ -89,11 +89,11 @@ if __name__=="__main__":
     if not args.no_sync:
         consumer_init_wait()
     # indicate start of activity
-    print("starting transmission", time.time())
     signal_consumer()
 
 
     start_timestamp = time.time()
+    print("starting transmission", start_timestamp)
     data_interval_start_timestamp = start_timestamp
     for i in range(diffr_data.shape[0]):
         for j in range(diffr_data.shape[1]):
@@ -182,4 +182,8 @@ if __name__=="__main__":
 
     # transmission is not ongoing and all deadline are finished
     # args needed to determine if in no sync mode 
-    cleanup(args)
+    try:
+        cleanup(args)
+    except Exception as e:
+        print("Exception during cleanup:", e)
+    print("Data streamer finished cleanup and exit")
