@@ -1,23 +1,24 @@
 #!/bin/bash
 
 
-# # drate variation experiment
-# python3 plot_error_barclusters.py --dir result_logs/smalldataset/ -o fig_error_smalldataset
-# python3 plot_error_barclusters.py --dir result_logs/largedataset/ -o fig_error_largedataset
-# python3 plot_nnerror_barclusters.py --dir result_logs/largedataset/ -o fig_nnerror_largedataset
-# python3 plot_nnerror_barclusters.py --dir result_logs/smalldataset/ -o fig_nnerror_smalldataset
-python3 plot_missrate_barclusters.py --dir result_logs/largedataset/ -o fig_missrate_largedataset
-python3 plot_missrate_barclusters.py --dir result_logs/smalldataset/ -o fig_missrate_smalldataset
+# dataset 1
+python3 plot_missrate_barclusters_deadlinevariation.py -d result_logs/smalldataset_deadlinevariation -o fig_missrate_deadlinevariation_dataset1
+python3 plot_missrate_barclusters_bratevariation.py -d result_logs/smalldataset_bratevariation -o fig_missrate_bratevariation_dataset1
+python3 plot_missrate_barclusters_dratevariation.py -d result_logs/smalldataset_dratevariation -o fig_missrate_dratevariation_dataset1
+
+python3 plot_nnerror_barclusters_deadlinevariation.py -d result_logs/smalldataset_deadlinevariation -o fig_nnerror_deadlinevariation_dataset1
+python3 plot_nnerror_barclusters_bratevariation.py -d result_logs/smalldataset_bratevariation -o fig_nnerror_bratevariation_dataset1
+python3 plot_nnerror_barclusters_dratevariation.py -d result_logs/smalldataset_dratevariation -o fig_nnerror_dratevariation_dataset1
 
 
-# # deadline variation experiment
-# python3 plot_error_barclusters_deadlinevariation.py --dir result_logs/smalldataset_deadlinevariation/ -o fig_error_smalldataset_deadlinevariation
-# python3 plot_error_barclusters_deadlinevariation.py --dir result_logs/largedataset_deadlinevariation/ -o fig_error_largedataset_deadlinevariation
-# python3 plot_nnerror_barclusters_deadlinevariation.py --dir result_logs/largedataset_deadlinevariation/ -o fig_nnerror_largedataset_deadlinevariation
-# python3 plot_nnerror_barclusters_deadlinevariation.py --dir result_logs/smalldataset_deadlinevariation/ -o fig_nnerror_smalldataset_deadlinevariation
-# python3 plot_missrate_barclusters_deadlinevariation.py --dir result_logs/largedataset_deadlinevariation/ -o fig_missrate_largedataset_deadlinevariation
-# python3 plot_missrate_barclusters_deadlinevariation.py --dir result_logs/smalldataset_deadlinevariation/ -o fig_missrate_smalldataset_deadlinevariation
+# dataset 2
+python3 plot_missrate_barclusters_deadlinevariation.py -d result_logs/largedataset_deadlinevariation -o fig_missrate_deadlinevariation_dataset2
+python3 plot_missrate_barclusters_bratevariation.py -d result_logs/largedataset_bratevariation -o fig_missrate_bratevariation_dataset2
+python3 plot_missrate_barclusters_dratevariation.py -d result_logs/largedataset_dratevariation -o fig_missrate_dratevariation_dataset2
 
+python3 plot_nnerror_barclusters_deadlinevariation.py -d result_logs/largedataset_deadlinevariation -o fig_nnerror_deadlinevariation_dataset2
+python3 plot_nnerror_barclusters_bratevariation.py -d result_logs/largedataset_bratevariation -o fig_nnerror_bratevariation_dataset2
+python3 plot_nnerror_barclusters_dratevariation.py -d result_logs/largedataset_dratevariation -o fig_nnerror_dratevariation_dataset2
 
 # # infer bs consumption comparison
 # # large dataset
