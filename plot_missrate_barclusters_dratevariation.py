@@ -21,9 +21,9 @@ import argparse
 
 from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT_TRANSMISSION
 
-IPR_RATE = 16
-DEADLINE_LIST = [80, 160, 320]
-DATARATE_LIST = [2000]
+IPR_RATE_LIST = [16]
+DEADLINE_LIST = [80]
+DATARATE_LIST = [1000, 2000, 3000]
 
 
 if __name__ == "__main__":
@@ -33,12 +33,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Dictionary to store average values: {param: [sys1_val, sys2_val, ...]}
-    results = {param: [] for param in DEADLINE_LIST}
+    results = {param: [] for param in DATARATE_LIST}
 
     # Read values and compute means
-    for param in DEADLINE_LIST:
+    for param in DATARATE_LIST:
         for sys in SYSTEM_NAME_LIST:
-            param_path = os.path.join(args.dir, sys, CSV_FILENAME_FMT_TRANSMISSION.format(sys, param, DATARATE_LIST[0], IPR_RATE))
+            param_path = os.path.join(args.dir, sys, CSV_FILENAME_FMT_TRANSMISSION.format(sys, DEADLINE_LIST[0], param, IPR_RATE_LIST[0]))
 
             with open(param_path, 'r') as f:
                 for line in f.readlines():
@@ -48,7 +48,7 @@ if __name__ == "__main__":
                     results[param].append(missrate_percentage)
 
     # Plotting
-    num_params = len(DEADLINE_LIST)
+    num_params = len(DATARATE_LIST)
     num_systems = len(SYSTEM_NAME_LIST)
     bar_width = 0.8 / num_systems
     x = np.arange(num_params)
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     for i, sys in enumerate(SYSTEM_NAME_LIST):
         offsets = x + i * bar_width
-        values = [results[param][i] for param in DEADLINE_LIST]
+        values = [results[param][i] for param in DATARATE_LIST]
         ax.bar(
             offsets, values, width=bar_width,
             label=SYSTEM_NAME_TO_LEGEND_DICT[sys],
@@ -65,9 +65,9 @@ if __name__ == "__main__":
         )
 
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([param for param in DEADLINE_LIST])
+    ax.set_xticklabels([param for param in DATARATE_LIST])
     ax.set_ylabel("Miss Rate(%)")
-    ax.set_xlabel("Deadline (msec.)")
+    ax.set_xlabel("Data Rate (sample/sec)")
     ax.legend()
 
     fig.savefig("{0}.png".format(args.output_file_basename), dpi=600, bbox_inches="tight")
