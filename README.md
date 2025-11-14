@@ -38,21 +38,31 @@ pip install --no-cache-dir -r requirements.txt
 
 ### Experiment Run
 
-Our two major performance metric are evaluated through following script
-```
-bash exp_perf_datacollection_bulk.sh
-```
-This script will generate logs and other necessary files inside ``result_logs/bulk``. Each compared system's data will be under separate folder. For example **unipipe** data will be in ``result_logs/bulk/unipipe``
+Our two major performance metrics are evaluated through following scripts. Each script run the compared systems varying one parameter while keeping two other fixed.
 
-To generate the plots,
+To run the profiling data, (**Assumption:** CUDA device is present and no other CUDA context is running.)
+```
+pushd ptychonn
+python3 exp_step_benchmarking_ptychonn.py  # notice that,  
+popd
+```
+
+To run the experiments, run from git repo. root, (**Warning**: It will remove previous ```result_logs``` directory)
+```
+bash exp_run_all.sh
+```
+
+This script will generate logs and other necessary files inside ``result_logs/``. Each compared system's data will be under separate folder. For example **unipipe** data will be in ``result_logs/bulk/unipipe``
+
+To generate the plots, run from git repo. root,
 ```
 bash exp_plot_generation.sh <result directory containing the system folders>
 ```
 Example,
 ```
-bash exp_plot_generation.sh result_logs/bulk
+bash exp_plot_generation.sh result_logs
 ```
-All generated plots will be in the result folder (e.g. ``result_logs/bulk``)
+All generated plots will be in the root folder.
 
 
 ### Background Mock Phase Retrieval Process
