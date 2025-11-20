@@ -10,74 +10,112 @@ def get_batch_time(i, j, nn_uf=0.00027, nn_ub=0.00035):
     # In a real scenario, this would be based on empirical data or a model
     return (i+j) * nn_uf + nn_ub * j  # Example: time increases with both i and j
 
-def f(k, served, start, Tk, A, D):
-    print("f({0}, {1}, {2}) recursive call".format(k, served, start))
-    if memo[k][served] < math.inf:
-        print("returning by exiting early as memoaization found")
-        return memo[k][served]
+MAX_FEASIBLE_BATCHSIZE=128
 
-    if served == int(Tk/A):
-        if start + get_batch_time(k, 0) < memo[k][served]:
-            memo[k][served] = start + get_batch_time(k, 0)
-            succ[k][0] = (0, 0)
-        print("returning served == int(Tk/A)")
-        return memo[k][served]
-    
-    remaining = int(Tk/A) - served
+# DP scheduling solver
+#
+# each cell memo[i][j] represents the minimum time to process i training samples and j inference samples
+# start_timepoint: the time point when scheduling starts
+# A: arrival interval of inference samples
+# D: deadline for each inference sample
+# each solution memo[i][j] is constructed by considering all feasible (k,l) batch sizes and memo[i-k][j-l] 
+# to process while maintainitng deadlines
+# 0<=k+l<=MAX_FEASIBLE_BATCHSIZE 
+def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
+    # to count the loop to have an idea of complexity
+    loop_count = 0
 
-    for i in range(k, -1, -1):
-        for j in range(remaining, 0, -1):
-            print(f"Considering k={k}, served={served}, i={i}, j={j}, start={start}")
-            Tij = get_batch_time(i, j)
+    for i in range(0, gt_count+1):
+        for j in range(0, accum_while_gt_genereted+1):
+            # initiate with inf
+            # this works and does not trigger solution not found because
+            # the (0, 0) solution will not cross deadline and we build solutions bottom up
+            memo[i][j] = math.inf  
+            succ[i][j] = None
 
-            if start + Tij > A * served + D: # oldest remaining will miss deadline
-                continue
+            found_feasible_incorporating_new_request = False
+            # extra index check, Python allows negative indexing
+            # so if not min'ed it will create unwanted effect
+            for k in range(0, min(MAX_FEASIBLE_BATCHSIZE, i)):    
+                # extra index check, Python allows negative indexing
+                # so if not min'ed it will create unwanted effect
+                for l in range(0, min(MAX_FEASIBLE_BATCHSIZE, j)):
+                    loop_count += 1
+                    # in an iteration maximum batch size is limited realistically due to memory constraints 
+                    if k+l > MAX_FEASIBLE_BATCHSIZE:
+                        break
 
-            print("f({0}, {1}, {2}) recursive call".format(k-i, served + j, start + Tij))
-            duration = f(k - i, served + j, start + Tij, Tk, A, D)
-            # this is done to select subsolution which gives the minimum duration
-            if duration < memo[k][served]:
-                memo[k][served] = duration
-                succ[k][served] = (k - i, served + j)
-                # break # no need to check smaller j, we do not thrive for smaller duration
-    
-    print("returning served after finishing loop")
-    return memo[k][served]
+                    # conditions to update memoization: new duration is smaller
+                    # Notice: There are three parts
+                    # 1. NN processing overhead for processing `k` training samples and `l` inference samples
+                    # 2. Time of finish for processing `i-k` training samples and `j-l` inference samples
+                    # 3. Time to wait until `l` inference samples arrived 
+                    time_to_wait_until_l_inference_arrived = max(0, (start_timepoint +  j * A) - memo[i-k][j-l])
+                    dur_kl_newiteration = memo[i-k][j-l] + get_batch_time(k, l) + time_to_wait_until_l_inference_arrived
+                    
+                    # we do not consider the case that deadline is missed
+                    # every processing needs to finish before deadline D of the earliest request from l inference samples
+                    # 0 for training samples, because we get the inference response after forward pass
+                    if time_to_wait_until_l_inference_arrived + get_batch_time(0, l) > D:
+                        # taking a larger `l` will only increase the time to wait
+                        # so deadline will be missed for larger `l` as well
+                        break
+
+                    # found at least one feasible way by incorporating new request
+                    found_feasible_incorporating_new_request = True
+                    if dur_kl_newiteration < memo[i][j]:
+                        memo[i][j] = dur_kl_newiteration
+                        succ[i][j] = (k, l)
+
+            # if we do not find any feasible way by incorporating new request
+            # we will not get a feasible schedule serving all requests
+            if not found_feasible_incorporating_new_request:
+                print("loop count:", loop_count)
+                print("serving every request is not feasible for given parameters")
+                print("Max feasible served requests while generating all GT data:", j-1)
+                return memo[gt_count][accum_while_gt_genereted]
+
+    print("loop count:", loop_count)
+    print("All requests can be served while generating {gt_count} GT data")
+    return memo[gt_count][accum_while_gt_genereted]
 
 
-TEST_K = 20
-TEST_B = 16
-TEST_D_RATE = 40
-TEST_DEADLINE = 1
+TEST_K = 160
+TEST_B = 160
+TEST_D_RATE = 2000
+TEST_DEADLINE = 0.2
 
 
 if __name__ == "__main__":
     A = 1 / TEST_D_RATE
     Tk = TEST_K/TEST_B # time to generate TEST_K ground truth data
+    accum_while_gt_genereted = int(Tk / A)
 
     # initialize memoization arrays
     for i in range(TEST_K + 1):
         memo.append([math.inf] * (int(Tk / A) + 1))
         succ.append([(0, 0)] * (int(Tk / A) + 1))
 
-
-    if memo[TEST_K][int(Tk/A)] == math.inf:
-        S = None # no solution
-
     print("Starting DP Scheduling...")
     print(f"Parameters: K={TEST_K}, B={TEST_B}, D_RATE={TEST_D_RATE}, DEADLINE={TEST_DEADLINE}")
     print(f"A={A}, Tk={Tk}, Tk/A={Tk/A}")
     # calculate optimal schedule
     start_time = time.time()
-    dur = f(TEST_K, 0, 0, Tk, A, TEST_DEADLINE)
+
+    dur = schedule_solver(TEST_K, accum_while_gt_genereted, 0,  A, TEST_DEADLINE)
+
+    if memo[TEST_K][int(Tk/A)] == math.inf:
+        S = None # no solution
+        print("No feasible schedule found.")
+        exit(0)
 
     i = TEST_K
-    j = int(Tk/A)
+    j = accum_while_gt_genereted
     S = []
-    while i > 0 and j > 0:
+    while i > 0 or j > 0:
         (k, t) = succ[i][j]
-        S.append((i - k, j - t))
-        (i, j) = (k, t)
+        S.append((k, t))
+        (i, j) = (i-k, j-t)
     end_time = time.time()
     print("DP Scheduling Runtime: ", end_time - start_time)
     print("Optimal Duration: ", memo[TEST_K][int(Tk/A)])
