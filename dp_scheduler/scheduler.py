@@ -10,6 +10,9 @@ def get_batch_time(i, j, nn_uf=0.00027, nn_ub=0.00035):
     # In a real scenario, this would be based on empirical data or a model
     return (i+j) * nn_uf + nn_ub * j  # Example: time increases with both i and j
 
+def get_forward_pass_time(i, j, nn_uf=0.00027, nn_ub=0.00035):
+    return (i+j) * nn_uf
+
 MAX_FEASIBLE_BATCHSIZE=128
 
 # DP scheduling solver
@@ -27,19 +30,22 @@ def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
 
     for i in range(0, gt_count+1):
         for j in range(0, accum_while_gt_genereted+1):
-            # initiate with inf
-            # this works and does not trigger solution not found because
-            # the (0, 0) solution will not cross deadline and we build solutions bottom up
-            memo[i][j] = math.inf  
-            succ[i][j] = None
+            # if the else block is not there, we will initiate
+            if i+j <= MAX_FEASIBLE_BATCHSIZE:
+                memo[i][j] = get_batch_time(i, j)  # initialize with processing all at once
+                succ[i][j] = (i, j)
+            else:
+                # initialize with some possibly feasible value, if we find better it will get replace
+                memo[i][j] = math.inf  
+                succ[i][j] = None
 
             found_feasible_incorporating_new_request = False
             # extra index check, Python allows negative indexing
             # so if not min'ed it will create unwanted effect
-            for k in range(0, min(MAX_FEASIBLE_BATCHSIZE, i)):    
+            for k in range(0, min(MAX_FEASIBLE_BATCHSIZE, i)+1):    
                 # extra index check, Python allows negative indexing
                 # so if not min'ed it will create unwanted effect
-                for l in range(0, min(MAX_FEASIBLE_BATCHSIZE, j)):
+                for l in range(0, min(MAX_FEASIBLE_BATCHSIZE, j)+1):
                     loop_count += 1
                     # in an iteration maximum batch size is limited realistically due to memory constraints 
                     if k+l > MAX_FEASIBLE_BATCHSIZE:
@@ -55,8 +61,7 @@ def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
                     
                     # we do not consider the case that deadline is missed
                     # every processing needs to finish before deadline D of the earliest request from l inference samples
-                    # 0 for training samples, because we get the inference response after forward pass
-                    if time_to_wait_until_l_inference_arrived + get_batch_time(0, l) > D:
+                    if time_to_wait_until_l_inference_arrived + get_forward_pass_time(k, l) > D:
                         # taking a larger `l` will only increase the time to wait
                         # so deadline will be missed for larger `l` as well
                         break
@@ -83,7 +88,7 @@ def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
 TEST_K = 160
 TEST_B = 160
 TEST_D_RATE = 2000
-TEST_DEADLINE = 0.2
+TEST_DEADLINE = 1.2
 
 
 if __name__ == "__main__":
