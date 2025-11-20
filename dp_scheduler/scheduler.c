@@ -18,6 +18,13 @@ float estimate_iteration_time(
     return (train_size + infer_size)*nn_uf + train_size*nn_ub;
 }
 
+float estimate_forward_pass_time(
+    int train_size, int infer_size, float nn_uf, float nn_ub
+)
+{
+    return (train_size + infer_size)*nn_uf;
+}
+
 
 typedef struct {
     int train_minibatch_size;
@@ -50,11 +57,17 @@ float schedule_solver(
     int upto_train_size, upto_infer_size;
     for(upto_train_size=0;upto_train_size<=traindatset_size;upto_train_size++)
     {
-        for(upto_infer_size=1;upto_infer_size<=accum_while_gt_generated;upto_infer_size++)
+        for(upto_infer_size=0;upto_infer_size<=accum_while_gt_generated;upto_infer_size++)
         {
-            // initiate with a large value
-            min_dur_memo_ara[upto_train_size][upto_infer_size] = INF;
-            schedule_entry tmp = {upto_train_size, upto_infer_size};
+            if (upto_train_size + upto_infer_size <= MAX_BATCH_SIZE) {
+                min_dur_memo_ara[upto_train_size][upto_infer_size] = estimate_iteration_time(upto_train_size, upto_infer_size, NN_UF, NN_UB);
+                schedule_entry tmp = {upto_train_size, upto_infer_size};
+                schedule_ara[upto_train_size][upto_infer_size] = tmp;
+            }
+            else {
+                // initiate with a large value
+                min_dur_memo_ara[upto_train_size][upto_infer_size] = INF;
+            }
 
             // for subsolution indexing
             int t_idx, i_idx;
@@ -83,7 +96,7 @@ float schedule_solver(
                     // 2. Time of finish for processing `i-k` training samples and `j-l` inference samples
                     // 3. Time to wait until `l` inference samples arrived 
                     float time_to_wait_until_l_inference_arrived = MAX(
-                        0, (start_timepoint +  i_idx * interarrival_time) - min_dur_memo_ara[upto_train_size-t_idx][upto_infer_size-i_idx]
+                        0, (start_timepoint +  upto_infer_size * interarrival_time) - min_dur_memo_ara[upto_train_size-t_idx][upto_infer_size-i_idx]
                     );
                     
                     float dur_kl_newiteration = 
@@ -93,8 +106,7 @@ float schedule_solver(
 
                     // we do not consider the case that deadline is missed
                     // every processing needs to finish before deadline D of the earliest request from l inference samples
-                    // 0 for training samples, because we get the inference response after forward pass
-                    if (time_to_wait_until_l_inference_arrived + estimate_iteration_time(0, i_idx, NN_UF, NN_UB) > deadline_sec) {
+                    if (time_to_wait_until_l_inference_arrived + estimate_forward_pass_time(t_idx, i_idx, NN_UF, NN_UB) > deadline_sec) {
                         break;
                     }
 
@@ -166,15 +178,16 @@ int main()
     printf("Optimal Schedule Run Duration: %f second\n\nOptimal Schedule: ", memo_ptr[K][accum_infer_count]);
     i=K;
     j=accum_infer_count;
-    while (i > 0 && j > 0)
+    int sum = 0;
+    while (i > 0 || j > 0)
     {
         schedule_entry tmp = schedule_solution_ptr[i][j];
-
+        sum += tmp.train_minibatch_size + tmp.infer_minibatch_size;
         printf("{%d, %d}, ", tmp.train_minibatch_size, tmp.infer_minibatch_size);
         i = i - tmp.train_minibatch_size;
         j = j - tmp.infer_minibatch_size;
     }
-    printf("\n");
+    printf("\n%d\n", sum);
 
     return 0;
 }
