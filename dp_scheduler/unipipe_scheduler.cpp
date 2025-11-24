@@ -21,15 +21,14 @@ typedef std::vector<std::vector<std::vector<float>>> schedule_entry_matrix;
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
-
-float estimate_iteration_time(
+float EST_ITERTIME(
     int train_size, int infer_size, float nn_uf, float nn_ub
 )
 {
     return (train_size + infer_size)*nn_uf + train_size*nn_ub;
 }
 
-float estimate_forward_pass_time(
+float EST_FWTIME(
     int train_size, int infer_size, float nn_uf, float nn_ub
 )
 {
@@ -57,7 +56,8 @@ float estimate_forward_pass_time(
  */
 schedule_entry_matrix schedule_solver(
     int traindatset_size, int accum_while_gt_generated, float start_timepoint,
-    const float interarrival_time, const float deadline_sec
+    const float interarrival_time, const float deadline_sec,
+    std::vector<float> &bs_fw_benchmark, std::vector<float> &bs_bw_benchmark
 )
 {
     // to hold the dp solution
@@ -74,7 +74,10 @@ schedule_entry_matrix schedule_solver(
         for(upto_infer_size=0;upto_infer_size<=accum_while_gt_generated;upto_infer_size++)
         {
             if (upto_train_size + upto_infer_size <= MAX_BATCH_SIZE) {
-                dp_ara[upto_train_size][upto_infer_size][2] = estimate_iteration_time(upto_train_size, upto_infer_size, NN_UF, NN_UB);
+                dp_ara[upto_train_size][upto_infer_size][2] = EST_ITERTIME(
+                    upto_train_size, upto_infer_size,
+                    bs_fw_benchmark[upto_train_size+upto_infer_size-1], bs_bw_benchmark[upto_train_size-1]
+                );
                 dp_ara[upto_train_size][upto_infer_size][0] = upto_train_size;
                 dp_ara[upto_train_size][upto_infer_size][1] = upto_infer_size;
             }
@@ -101,8 +104,8 @@ schedule_entry_matrix schedule_solver(
                         break;
                     }
 
-                    float iteration_time = estimate_iteration_time(
-                        t_idx, i_idx, NN_UF, NN_UB
+                    float iteration_time = EST_ITERTIME(
+                        t_idx, i_idx, bs_fw_benchmark[t_idx+i_idx-1], bs_bw_benchmark[t_idx-1]
                     );
                     // conditions to update memoization: new duration is smaller
                     // Notice: There are three parts
@@ -120,7 +123,7 @@ schedule_entry_matrix schedule_solver(
 
                     // we do not consider the case that deadline is missed
                     // every processing needs to finish before deadline D of the earliest request from l inference samples
-                    if (time_to_wait_until_l_inference_arrived + estimate_forward_pass_time(t_idx, i_idx, NN_UF, NN_UB) > deadline_sec) {
+                    if (time_to_wait_until_l_inference_arrived + EST_FWTIME(t_idx, i_idx, bs_fw_benchmark[t_idx+i_idx-1], bs_bw_benchmark[t_idx-1]) > deadline_sec) {
                         break;
                     }
 
