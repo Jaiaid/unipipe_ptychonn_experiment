@@ -6,7 +6,7 @@ import time
 TEST_K = 160
 TEST_B = 160
 TEST_D_RATE = 2000
-TEST_DEADLINE = 0.2
+TEST_DEADLINE = 0.1
 
 BENCHMARK_FILE = "../ptychonn/benchmark_ptychonn_nn_step.csv"
 
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     )
     print(len(solution), len(solution[0]), len(solution[0][0]))
 
-    if solution[TEST_K][int(Tk/A)][2] == math.inf:
+    if solution[TEST_K][int(Tk/A)][2] >= 1e9:
         S = None # no solution
         print("No feasible schedule found.")
         exit(0)
@@ -46,11 +46,15 @@ if __name__ == "__main__":
     i = TEST_K
     j = accum_while_gt_genereted
     S = []
+    # the schedule will be built in reverse order
     while i > 0 or j > 0:
         (k, t) = solution[i][j][0:2]
+        # q = solution[i][j][3]
         (k, t) = (int(k), int(t))
+        # S.append((k, t, q))
         S.append((k, t))
         (i, j) = (i-k, j-t)
+    S.reverse()
     end_time = time.time()
     print("DP Scheduling Runtime: ", end_time - start_time)
     print("Optimal Duration: ", solution[TEST_K][int(Tk/A)][2])
