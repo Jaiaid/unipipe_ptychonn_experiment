@@ -35,6 +35,16 @@ float EST_FWTIME(
     return (train_size + infer_size)*nn_uf;
 }
 
+float EST_ITER_QUALITY(
+    int total_train, int last_iter_train, int last_iter_infer
+)
+{
+    if (total_train == 0) {
+        return 0.0;
+    }
+
+    return (total_train - last_iter_train) * last_iter_infer / (float)total_train;
+}
 
 
 /*
@@ -46,8 +56,8 @@ float EST_FWTIME(
  * start_timepoint: the time point when scheduling starts
  * interarrival_time: arrival interval of inference samples
  * deadline_sec: deadline for each inference sample
- * min_dur_memo_ara: memoization array to store minimum duration to process i training samples and j inference samples
- * schedule_ara: to store the schedule solution
+ * bs_fw_benchmark: Forward pass time vector where bs_fw_benchmark[i] gives the forward pass time for batch size i+1 
+ * bs_bw_benchmark: Backward pass time vector where bs_bw_benchmark[i] gives the backward pass time for batch size i+1 
  *
  *
  * each solution memo[i][j] is constructed by considering all feasible (k,l) batch sizes and memo[i-k][j-l] 
@@ -65,7 +75,7 @@ schedule_entry_matrix schedule_solver(
     schedule_entry_matrix dp_ara = schedule_entry_matrix(traindatset_size+1);
     for(int i=0;i<=traindatset_size;i++)
     {
-        dp_ara[i] = std::vector<std::vector<float>>(accum_while_gt_generated+1, std::vector<float>(3));
+        dp_ara[i] = std::vector<std::vector<float>>(accum_while_gt_generated+1, std::vector<float>(4));
     }
 
     int upto_train_size, upto_infer_size;
@@ -80,10 +90,14 @@ schedule_entry_matrix schedule_solver(
                 );
                 dp_ara[upto_train_size][upto_infer_size][0] = upto_train_size;
                 dp_ara[upto_train_size][upto_infer_size][1] = upto_infer_size;
+                dp_ara[upto_train_size][upto_infer_size][3] = EST_ITER_QUALITY(upto_train_size, 0, upto_infer_size);
             }
             else {
                 // initiate with a large value
                 dp_ara[upto_train_size][upto_infer_size][2] = INF;
+                dp_ara[upto_train_size][upto_infer_size][0] = 0;
+                dp_ara[upto_train_size][upto_infer_size][1] = 0;
+                dp_ara[upto_train_size][upto_infer_size][3] = 0;
             }
 
             // for subsolution indexing
@@ -120,19 +134,24 @@ schedule_entry_matrix schedule_solver(
                     dp_ara[upto_train_size-t_idx][upto_infer_size-i_idx][2] +
                     iteration_time +
                     time_to_wait_until_l_inference_arrived;
+                    
+                    float quality = dp_ara[upto_train_size-t_idx][upto_infer_size-i_idx][3] + EST_ITER_QUALITY(upto_train_size, t_idx, i_idx);
 
                     // we do not consider the case that deadline is missed
                     // every processing needs to finish before deadline D of the earliest request from l inference samples
                     if (time_to_wait_until_l_inference_arrived + EST_FWTIME(t_idx, i_idx, bs_fw_benchmark[t_idx+i_idx-1], bs_bw_benchmark[t_idx-1]) > deadline_sec) {
+                        // printf("failed deadline for traindatset_size=%d, served_count=%d with iteration minibatchsize train_batch=%d, infer_batch=%d\n", upto_train_size, upto_infer_size, t_idx, i_idx);
+                        // exit(0);
                         break;
                     }
 
                     // found at least one feasible way by incorporating new request
                     solution_found = true;
-                    if (dur_kl_newiteration < dp_ara[upto_train_size][upto_infer_size][2]) {
+                    if (dur_kl_newiteration < dp_ara[upto_train_size][upto_infer_size][2] && quality > dp_ara[upto_train_size][upto_infer_size][3]) {
                         dp_ara[upto_train_size][upto_infer_size][2] = dur_kl_newiteration;
                         dp_ara[upto_train_size][upto_infer_size][0] = t_idx;
-                        dp_ara[upto_train_size][upto_infer_size][1] = i_idx; 
+                        dp_ara[upto_train_size][upto_infer_size][1] = i_idx;
+                        dp_ara[upto_train_size][upto_infer_size][3] = quality;
                     }
                 }
             }
@@ -143,6 +162,7 @@ schedule_entry_matrix schedule_solver(
                 printf("No feasible subsolution found for traindatset_size=%d, served_count=%d\n", traindatset_size, accum_while_gt_generated);
                 printf("Serving every request is not feasible for given parameters\n");
                 printf("Max feasible served requests while generating all GT data: %d\n", upto_infer_size - 1);
+                dp_ara[traindatset_size][accum_while_gt_generated][2] = INF;
                 return dp_ara;
             }
         }
