@@ -35,6 +35,19 @@ float EST_FWTIME(
     return (train_size + infer_size)*nn_uf;
 }
 
+// estimated quality improvement for an iteration processing last_iter_train training samples
+// and last_iter_infer inference samples
+// The intuition is that quality improvement is proportional to the fraction of training samples
+// processed in previous iteration over total training samples
+//
+// the more total training samples already processed, the less quality improvement for same 
+// number of inference samples processed in last iterations
+//
+// for same previous iteartion training samples and total traininig samples, the more inference 
+// samples processed in last iteration, the more quality improvement is
+// 
+// this seems counter intuitive, but this will promote higher quality scenario to serve more 
+// inference samples 
 float EST_ITER_QUALITY(
     int total_train, int last_iter_train, int last_iter_infer
 )
