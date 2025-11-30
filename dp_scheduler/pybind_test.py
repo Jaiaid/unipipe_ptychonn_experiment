@@ -51,14 +51,14 @@ if __name__ == "__main__":
     i = TEST_K
     j = accum_while_gt_genereted
     S = []
-    print(solution)
+    # print(solution)
     # the schedule will be built in reverse order
     while i > 0 or j > 0:
         (k, t) = solution[i][j][0:2]
         q = solution[i][j][3]
         (k, t) = (int(k), int(t))
-        S.append((k, t, q))
-        # S.append((k, t))
+        # S.append((k, t, q))
+        S.append((k, t))
         (i, j) = (i-k, j-t)
     S.reverse()
     end_time = time.time()
