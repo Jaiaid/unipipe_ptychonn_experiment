@@ -12,6 +12,11 @@ BENCHMARK_FILE = "../ptychonn/benchmark_ptychonn_nn_step.csv"
 
 
 if __name__ == "__main__":
+    TEST_K = int(input("Enter K (number of ground truth items): ") or TEST_K)
+    TEST_B = float(input("Enter B (ground truth generation rate): ") or TEST_B)
+    TEST_D_RATE = float(input("Enter D_RATE (data streaming rate): ") or TEST_D_RATE)
+    TEST_DEADLINE = float(input("Enter DEADLINE (seconds): ") or TEST_DEADLINE)
+
     A = 1 / TEST_D_RATE
     Tk = TEST_K/TEST_B # time to generate TEST_K ground truth data
     accum_while_gt_genereted = int(Tk / A)
@@ -46,13 +51,14 @@ if __name__ == "__main__":
     i = TEST_K
     j = accum_while_gt_genereted
     S = []
+    print(solution)
     # the schedule will be built in reverse order
     while i > 0 or j > 0:
         (k, t) = solution[i][j][0:2]
-        # q = solution[i][j][3]
+        q = solution[i][j][3]
         (k, t) = (int(k), int(t))
-        # S.append((k, t, q))
-        S.append((k, t))
+        S.append((k, t, q))
+        # S.append((k, t))
         (i, j) = (i-k, j-t)
     S.reverse()
     end_time = time.time()
