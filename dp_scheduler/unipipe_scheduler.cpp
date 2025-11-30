@@ -103,7 +103,7 @@ schedule_entry_matrix schedule_solver(
                 );
                 dp_ara[upto_train_size][upto_infer_size][0] = upto_train_size;
                 dp_ara[upto_train_size][upto_infer_size][1] = upto_infer_size;
-                dp_ara[upto_train_size][upto_infer_size][3] = EST_ITER_QUALITY(upto_train_size, 0, upto_infer_size);
+                dp_ara[upto_train_size][upto_infer_size][3] = 0;
             }
             else {
                 // initiate with a large value
@@ -149,7 +149,9 @@ schedule_entry_matrix schedule_solver(
                     time_to_wait_until_l_inference_arrived;
                     
                     float quality = dp_ara[upto_train_size-t_idx][upto_infer_size-i_idx][3] + EST_ITER_QUALITY(upto_train_size, t_idx, i_idx);
-
+                    // if (upto_train_size == 10 && upto_infer_size == 1) {
+                    //     printf("%lf %d %d %d\n", quality, t_idx, i_idx, upto_train_size);
+                    // }
                     // we do not consider the case that deadline is missed
                     // every processing needs to finish before deadline D of the earliest request from l inference samples
                     if (time_to_wait_until_l_inference_arrived + EST_FWTIME(t_idx, i_idx, bs_fw_benchmark[t_idx+i_idx-1], bs_bw_benchmark[t_idx-1]) > deadline_sec) {
@@ -160,7 +162,13 @@ schedule_entry_matrix schedule_solver(
 
                     // found at least one feasible way by incorporating new request
                     solution_found = true;
-                    if (dur_kl_newiteration < dp_ara[upto_train_size][upto_infer_size][2] && quality > dp_ara[upto_train_size][upto_infer_size][3]) {
+                    if (quality > dp_ara[upto_train_size][upto_infer_size][3]) {
+                        dp_ara[upto_train_size][upto_infer_size][2] = dur_kl_newiteration;
+                        dp_ara[upto_train_size][upto_infer_size][0] = t_idx;
+                        dp_ara[upto_train_size][upto_infer_size][1] = i_idx;
+                        dp_ara[upto_train_size][upto_infer_size][3] = quality;
+                    }
+                    else if (dur_kl_newiteration < dp_ara[upto_train_size][upto_infer_size][2] && quality == dp_ara[upto_train_size][upto_infer_size][3]) {
                         dp_ara[upto_train_size][upto_infer_size][2] = dur_kl_newiteration;
                         dp_ara[upto_train_size][upto_infer_size][0] = t_idx;
                         dp_ara[upto_train_size][upto_infer_size][1] = i_idx;
