@@ -166,6 +166,7 @@ class Simulator:
                 total_score = curr_score + tail_score
                 
                 if (total_score > best_score) or (total_score == best_score and (total_miss < best_miss or (total_miss == best_miss and total_trained > best_trained))):
+                # if (total_miss < best_miss or (total_miss == best_miss and total_trained > best_trained)):
                     best_score = total_score
                     best_miss = total_miss
                     best_trained = total_trained
@@ -230,6 +231,7 @@ class Simulator:
                 i_idx += 1
         p = pd.DataFrame([s.get_info() for s in self.samples])
         print(p.to_string(index=False))
+        print("Makespan (s):", sum(s.completed_ts for s in self.samples))
         return p
 
 
