@@ -407,10 +407,10 @@ if __name__ == "__main__":
 
     # initiate the file name to log down which data got consumed for what
     traindatalist_file = open(
-        "/dev/shm/traindatalist_unipipe_{0}_{1}_{2}_{3}.csv".format(
+        "/dev/shm/traindatalist_unipipe_dp_{0}_{1}_{2}_{3}.csv".format(
             args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w") 
     inferdatalist_file = open(
-        "/dev/shm/inferdatalist_unipipe_{0}_{1}_{2}_{3}.csv".format(
+        "/dev/shm/inferdatalist_unipipe_dp_{0}_{1}_{2}_{3}.csv".format(
             args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w") 
 
     # # init the model
