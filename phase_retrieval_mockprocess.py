@@ -72,7 +72,9 @@ if __name__=="__main__":
     parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be used")
     parser.add_argument("--unipipe-scheduler", "-unipipe", action="store_true", help="if working with unipipe scheduler")
     parser.add_argument("--pretrained-scheduler", "-pretrained", action="store_true", help="if working with pretrained scheduler")
-    
+    parser.add_argument("--unipipedp-scheduler", "-unipipedp", action="store_true", help="if working with unipipedp scheduler")
+    parser.add_argument("--gtcount", "-gtcount", type=int, required=False, help="how many ground truth will be consumed by phase retrieval process", default=1)
+
     args = parser.parse_args()
 
     # ground truth data will be 161x161 (parameters.DIFFRLINE X parameters.DIFFRLINE) 
@@ -97,6 +99,8 @@ if __name__=="__main__":
             phase_retrieval_genrate=args.generation_rate,
             acquisition_rate=args.acquisition_rate,
             deadline_sec=deadline_sec)
+    elif args.unipipedp_scheduler:
+        time_stretch_continuous_data_process = args.gtcount / args.generation_rate
     elif args.pretrained_scheduler:
         time_stretch_continuous_data_process = perf_model.estimate_T_IPR_pretrained(
             phase_retrieval_genrate=args.generation_rate,
@@ -107,6 +111,7 @@ if __name__=="__main__":
             phase_retrieval_genrate=args.generation_rate,
             acquisition_rate=args.acquisition_rate,
             deadline_sec=deadline_sec)
+
     skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
     print(time_stretch_continuous_data_process, skip_data_idx)
 
