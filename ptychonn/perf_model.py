@@ -1,5 +1,6 @@
 import math
-import unipipe_scheduler
+
+from . import unipipe_scheduler
 
 
 def estimate_T_IPR_pretrained(
