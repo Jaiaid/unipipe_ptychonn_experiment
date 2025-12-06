@@ -28,7 +28,7 @@ import ptychonn.process_funcs
 import ptychonn.error_calculation
 import ptychonn.datastream
 import ptychonn.shm_datareader
-import dp_scheduler.unipipe_scheduler
+import ptychonn.unipipe_scheduler
 
 # for logging
 import logfast.fastlogger
@@ -39,7 +39,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                        teststream:ptychonn.shm_datareader.SHMInferDataReader,
                        epoch_count, datarate, deadline_sec, 
                        traindatalist_fileobj, inferdatalist_fileobj, ipriteration_no, chkpt_path,
-                       logger:logfast.fastlogger.FastLogger, schedule=[],
+                       logger:logfast.fastlogger.FastLogger, iteration_schedule=[],
                        time_limit=None, periter_validation=False, inffrac=1.0):
 
     logger.log("UNIPIPE BEGIN")
@@ -52,7 +52,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
 
     # taken from paper's code
     # if optimizer_objects is None:
-    iter_per_epoch = np.floor(len(trainloader)/trainbs) + 1
+    iter_per_epoch = len(iteration_schedule) + 1
     step_size = 6 * iter_per_epoch
     criterion = torch.nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr = ptychonn.parameters.LR)
@@ -100,7 +100,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
 
     # actual breaking condition is on time limit and loss
     cur_epoch = 0
-    while time_limit is not None and time.time() - start_time < time_limit and (total_consumed < len(teststream) or cur_epoch < epoch_count):
+    while cur_iteration_idx < len(iteration_schedule) and time_limit is not None and time.time() - start_time < time_limit and (total_consumed < len(teststream) or cur_epoch < epoch_count):
     # while total_consumed < len(teststream) or cur_epoch < epoch_count:
         cur_epoch += 1
         logger.log("UNIPIPE DP EPOCH BEGIN", cur_epoch, epoch_count)
@@ -117,14 +117,14 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
         iteration_time = 0
 
         # while time_limit is not None and time.time() - start_time < time_limit:
-        while time_limit is not None and time.time() - start_time < time_limit and (total_consumed < len(teststream) or cur_epoch < epoch_count):
+        while cur_iteration_idx < len(iteration_schedule) and time_limit is not None and time.time() - start_time < time_limit and (total_consumed < len(teststream) or cur_epoch < epoch_count):
         # while total_consumed < len(teststream) or cur_epoch < epoch_count:
             logger.log("UNIPIPE DP ITERATION START", total_iter_count)
             iteration_start_time = time.time()
             # first take from test
             infer_count = 0
 
-            inferbs = schedule[cur_iteration_idx][1]
+            inferbs = iteration_schedule[cur_iteration_idx][1]
             if total_consumed < len(teststream):
                 try:
                     logger.log("READING FROM TEST STREAM", stream_read_error_count)
@@ -149,7 +149,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                     continue
 
             train_count = 0
-            trainbs = schedule[cur_iteration_idx][0]
+            trainbs = iteration_schedule[cur_iteration_idx][0]
 
             if not stop_train:
                 train_batch = trainloader.read(bs=min(trainbs, len(trainloader) - train_consumed))
@@ -377,9 +377,6 @@ if __name__ == "__main__":
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
 
-    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model, bs=args.trainbs+args.inferbs, warmup=30, iters=220)
-    nn_uf = 0.00027
-    nn_ub = 0.00036
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
@@ -389,6 +386,8 @@ if __name__ == "__main__":
             exit()
     # GPU environment is assumed
     model.to("cuda")
+    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model, bs=args.trainbs+args.inferbs, warmup=30, iters=220)
+
 
     # taken from paper's code
     # if optimizer_objects is None:
@@ -427,23 +426,23 @@ if __name__ == "__main__":
     # wait to synchronize time calculation with produce process
     print("waiting for others")
     
-    # warmup run
-    warmup_start_time = time.time()
-    metrics, _, _, _, _ = unipipe_traininfer(
-            model, train_datareader, infer_datareader, epoch_count=1,
-            datarate=args.datarate, deadline_sec=args.deadline/1000,
-            traindatalist_fileobj=traindatalist_file, inferdatalist_fileobj=inferdatalist_file, ipriteration_no=0,
-            chkpt_path="dummy.pth", logger=logger, periter_validation=args.validation_training,
-            time_limit=args.deadline/1000)
-    logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
     deadline_sec = args.deadline / 1000
     unipipe_time_limit = deadline_sec# args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
-    unipipe_time_limit, schedule = ptychonn.perf_model.estimate_unipipe_schedule(
+    unipipe_time_limit, iteration_schedule = ptychonn.perf_model.estimate_unipipe_schedule(
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
         acquisition_rate=args.datarate, ground_truth_count=args.gtcount
     )
 
+    # warmup run
+    warmup_start_time = time.time()
+    metrics, _, _, _, _ = unipipe_dp_traininfer(
+            model, train_datareader, infer_datareader, epoch_count=1,
+            datarate=args.datarate, deadline_sec=args.deadline/1000,
+            traindatalist_fileobj=traindatalist_file, inferdatalist_fileobj=inferdatalist_file, ipriteration_no=0,
+            chkpt_path="dummy.pth", logger=logger, periter_validation=args.validation_training,
+            time_limit=args.deadline/1000, iteration_schedule=iteration_schedule)
+    logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
     # signal producer that done, needed if initiation become expensive
     signal_producer()
@@ -540,7 +539,7 @@ if __name__ == "__main__":
             datarate=args.datarate, deadline_sec=deadline_sec,
             traindatalist_fileobj=traindatalist_file, inferdatalist_fileobj=inferdatalist_file, ipriteration_no=cur_ipriteration,
             chkpt_path="inctrained_interval{0}_model.pth".format(cur_ipriteration), logger=logger, periter_validation=args.validation_training,
-            time_limit=unipipe_time_limit, schedule=schedule)
+            time_limit=unipipe_time_limit, iteration_schedule=iteration_schedule)
         # log how much ipr iteration matches with unipipe iteration
         time_taken = time.time() - unipipe_time_start
         logger.log(
