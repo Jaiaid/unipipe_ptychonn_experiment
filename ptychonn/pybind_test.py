@@ -8,7 +8,7 @@ TEST_B = 160
 TEST_D_RATE = 2000
 TEST_DEADLINE = 0.1
 
-BENCHMARK_FILE = "../ptychonn/benchmark_ptychonn_nn_step.csv"
+BENCHMARK_FILE = "benchmark_ptychonn_nn_step.csv"
 
 
 if __name__ == "__main__":

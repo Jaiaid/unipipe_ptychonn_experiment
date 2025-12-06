@@ -4,6 +4,7 @@ import time
 # DP memoaization array for scheduling problem
 memo = [] # for memoaization
 succ = [] # for reconstructing solution
+quality_mem = [] # for memoaization of quality values for each (i,j) state
 
 def get_batch_time(i, j, nn_uf=0.00027, nn_ub=0.00035):
     # Placeholder function to return time taken for processing batch with i training sample and j inference sample
@@ -34,10 +35,12 @@ def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
             if i+j <= MAX_FEASIBLE_BATCHSIZE:
                 memo[i][j] = get_batch_time(i, j)  # initialize with processing all at once
                 succ[i][j] = (i, j)
+                quality_mem[i][j] = 0
             else:
                 # initialize with some possibly feasible value, if we find better it will get replace
                 memo[i][j] = math.inf  
                 succ[i][j] = None
+                quality_mem[i][j] = 0
 
             found_feasible_incorporating_new_request = False
             # extra index check, Python allows negative indexing
@@ -58,6 +61,7 @@ def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
                     # 3. Time to wait until `l` inference samples arrived 
                     time_to_wait_until_l_inference_arrived = max(0, (start_timepoint +  j * A) - memo[i-k][j-l])
                     dur_kl_newiteration = memo[i-k][j-l] + get_batch_time(k, l) + time_to_wait_until_l_inference_arrived
+                    quality = 0 if j == 0 else (i-k)/j # quality is how many training samples per inference sample in the current state
                     
                     # we do not consider the case that deadline is missed
                     # every processing needs to finish before deadline D of the earliest request from l inference samples
@@ -68,9 +72,11 @@ def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
 
                     # found at least one feasible way by incorporating new request
                     found_feasible_incorporating_new_request = True
-                    if dur_kl_newiteration < memo[i][j]:
+                    # following condition will choose one solution but it will be part of pareto front
+                    if dur_kl_newiteration <= memo[i][j] and quality > quality_mem[i][j]:
                         memo[i][j] = dur_kl_newiteration
                         succ[i][j] = (k, l)
+                        quality_mem[i][j] = quality
 
             # if we do not find any feasible way by incorporating new request
             # we will not get a feasible schedule serving all requests
@@ -88,7 +94,7 @@ def schedule_solver(gt_count, accum_while_gt_genereted, start_timepoint, A, D):
 TEST_K = 160
 TEST_B = 160
 TEST_D_RATE = 2000
-TEST_DEADLINE = 1.2
+TEST_DEADLINE = 0.2
 
 
 if __name__ == "__main__":
@@ -100,6 +106,7 @@ if __name__ == "__main__":
     for i in range(TEST_K + 1):
         memo.append([math.inf] * (int(Tk / A) + 1))
         succ.append([(0, 0)] * (int(Tk / A) + 1))
+        quality_mem.append([0] * (int(Tk / A) + 1))
 
     print("Starting DP Scheduling...")
     print(f"Parameters: K={TEST_K}, B={TEST_B}, D_RATE={TEST_D_RATE}, DEADLINE={TEST_DEADLINE}")
