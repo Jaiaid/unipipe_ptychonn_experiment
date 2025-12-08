@@ -13,6 +13,7 @@ Thereofore, conusmer of the data has to do the followings
 2. Read and delete the data
 """
 
+import math
 import numpy as np
 import time
 import argparse
@@ -70,6 +71,9 @@ if __name__=="__main__":
     
     total_image_count = diffr_data.shape[0] * diffr_data.shape[1]
 
+    # creating stale folder marker
+    ipc.create_shm_folder(parameters.SHM_MARKER_STALE_FOLDER)
+
     # transmission state
     current_transmit_idx = 0
     # if consumer delete it we consider it consumed
@@ -81,8 +85,8 @@ if __name__=="__main__":
 
     next_delete_idx = 0
     deadline_sec = args.deadline_msec/1000
-    deadline_list = []
-    transmission_list = []
+    deadline_time_list = [math.inf]*total_image_count  # preallocate list for deadlines
+    transmission_list = [0]*total_image_count  # preallocate list for transmission timestamps
 
     # wait for consumer to finish initiation
     print("waiting for consumer to join")
@@ -91,6 +95,13 @@ if __name__=="__main__":
     # indicate start of activity
     signal_consumer()
 
+    total_deviation = 0
+    deviation_case_count = 0
+    busyloop_iteration_count = 0
+    busyloop_count = 0
+    # removal_time_mean = 0
+    # removal_loop_iteration_mean = 0
+    # removal_loop_iteration_mean_count = 0
 
     start_timestamp = time.time()
     print("starting transmission", start_timestamp)
@@ -101,37 +112,61 @@ if __name__=="__main__":
             # keep deleting data if deadline over
             first_delete_idx = next_delete_idx
             initial_missed_count = missed
-            while next_delete_idx < len(deadline_list) and deadline_list[next_delete_idx] < current_timestamp:
-                try:
-                    ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx))
+            while next_delete_idx < len(deadline_time_list) and deadline_time_list[next_delete_idx] < current_timestamp:
+                if ipc.exist_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx)):
+                    ipc.move_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx), parameters.SHM_MARKER_STALE_FOLDER)
                     missed += 1
                     if next_delete_idx > total_image_count/5:
                         missed_nonpretrained += 1
-                except FileNotFoundError as e:
+                else:
                     consumed += 1
                     if next_delete_idx > total_image_count/5:
                         consumed_nonpretrained += 1
+
                 next_delete_idx += 1
-                current_timestamp = time.time()
+                tmp = time.time()
+                # removal_time_mean += tmp - current_timestamp
+                current_timestamp = tmp
+                # removal_loop_iteration_mean += 1
+
+            # removal_loop_iteration_mean_count += 1
+
             if args.debug_log and missed != initial_missed_count:
                 print(time.time(), "Deleted {0} samples from {1} to {2}".format(missed - initial_missed_count, first_delete_idx, next_delete_idx - 1))
 
             # we assume deadline >> interval between two data samples
             # therefore, waiting for new data to arrive will not cause deadline to be over significantly
-            while current_timestamp - data_interval_start_timestamp < 1/args.rate:
+            data_created = False
+            while current_timestamp - data_interval_start_timestamp < 1/args.rate:# - 0.0000011:
+                busyloop_iteration_count += 1
+                if not data_created:
+                    data_created = True
+                    # create the data in shared memory space /dev/shm
+                    ipc.create_shm_data(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_transmit_idx), diffr_data[i,j])
+        
                 current_timestamp = time.time()
-            # create the data in shared memory space /dev/shm
-            ipc.create_shm_data(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_transmit_idx), diffr_data[i,j])
-            if args.debug_log:
-                print(time.time(), "Created sample {0}".format(current_transmit_idx))
+            busyloop_count += 1
 
+            if not data_created:
+                ipc.create_shm_data(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_transmit_idx), diffr_data[i,j])
+
+            if args.debug_log:
+                print("Created sample {0}".format(current_transmit_idx))
+            
+            total_deviation = current_timestamp - (start_timestamp + (current_transmit_idx+1)/args.rate)
+            deviation_case_count += 1
             # append to deadline list
-            deadline_list.append(current_timestamp + deadline_sec)
+            deadline_time_list[current_transmit_idx] = current_timestamp + deadline_sec
             # increase transmit idx
             current_transmit_idx += 1
 
             # set new data interval start timestamp
-            data_interval_start_timestamp = current_timestamp
+            data_interval_start_timestamp = start_timestamp + current_transmit_idx/args.rate # current_timestamp - ((current_timestamp - data_interval_start_timestamp) - 1/args.rate)
+
+    # print("Removal time mean per sample: {0}s over {1} samples".format(
+    #     removal_time_mean/next_delete_idx, next_delete_idx))
+    # print("Removal loop iteration mean per sample: {0} over {1} samples".format(
+    #     removal_loop_iteration_mean/removal_loop_iteration_mean_count, removal_loop_iteration_mean_count))
 
     # wait until data are consumed or deadline over
     current_timestamp = time.time()
@@ -142,7 +177,7 @@ if __name__=="__main__":
     while consumed + missed < current_transmit_idx:
         current_timestamp = time.time()
         # keep deleting data if deadline over
-        while next_delete_idx < len(deadline_list) and deadline_list[next_delete_idx] < current_timestamp:
+        while next_delete_idx < len(deadline_time_list) and deadline_time_list[next_delete_idx] < current_timestamp:
             try:
                 ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx))
                 missed += 1
@@ -187,3 +222,8 @@ if __name__=="__main__":
     except Exception as e:
         print("Exception during cleanup:", e)
     print("Data streamer finished cleanup and exit")
+
+    print("Average deviation from expected transmission time: {0}s over {1} samples".format(
+        total_deviation/deviation_case_count, deviation_case_count))
+    print("Average busyloop iterations per data sample: {0} over {1} samples".format(
+        busyloop_iteration_count/busyloop_count, busyloop_count))
