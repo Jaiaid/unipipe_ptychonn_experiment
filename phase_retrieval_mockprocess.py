@@ -50,7 +50,12 @@ def signal_producer():
 def producer_transmit_wait():
     while not ipc.exist_shm(parameters.SHM_MARKER_TRANSMIT_START):
         pass
+    # for timestamp sync
+    with open("/dev/shm/{0}".format(parameters.SHM_MARKER_TIMESTAMP_SYNC), "r") as fd:
+        marker_content = fd.read()
+        start_timestamp = float(marker_content)
 
+    return start_timestamp
 
 def cleanup():
     ipc.remove_shm(parameters.SHM_MARKER_IPR_INIT_FINISH)
@@ -100,7 +105,7 @@ if __name__=="__main__":
             acquisition_rate=args.acquisition_rate,
             deadline_sec=deadline_sec)
     elif args.unipipedp_scheduler:
-        time_stretch_continuous_data_process = args.gtcount / args.generation_rate
+        time_stretch_continuous_data_process = math.ceil((args.gtcount / args.generation_rate)*args.acquisition_rate)/args.acquisition_rate
     elif args.pretrained_scheduler:
         time_stretch_continuous_data_process = perf_model.estimate_T_IPR_pretrained(
             phase_retrieval_genrate=args.generation_rate,
@@ -112,7 +117,11 @@ if __name__=="__main__":
             acquisition_rate=args.acquisition_rate,
             deadline_sec=deadline_sec)
 
-    skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
+    if not args.unipipedp_scheduler:
+        skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
+    else:
+        skip_data_idx = math.ceil(time_stretch_continuous_data_process * args.acquisition_rate) - args.gtcount
+
     print(time_stretch_continuous_data_process, skip_data_idx)
 
     # signal finish of initiation
@@ -120,22 +129,29 @@ if __name__=="__main__":
     signal_producer()
     print("waiting for produce acknowledgement of starting", time.time())
     # blockingwait until data streaming start
-    producer_transmit_wait()
-    print("data capture start", time.time())
+    start_timestamp = producer_transmit_wait()
+    print("data capture start", start_timestamp)
 
-    start_timestamp = time.time()
     current_timestamp = start_timestamp
     data_process_interval_start_timestamp = start_timestamp
     cur_ipriteration = 0
     # to give producer time to put first data
-    time.sleep(1/args.acquisition_rate)
-    # for cur_interval in range():#(args.interval_count):
+    if args.unipipedp_scheduler:
+        time.sleep(args.gtcount/args.acquisition_rate)
+    else:
+        time.sleep(1/args.acquisition_rate)
+
     while current_timestamp - start_timestamp < args.interval_count * args.interval_duration:
         cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
         ipc.create_shm_folder(cur_folder)
 
-        current_interval_start_timestamp = time.time()
-        current_timestamp = time.time()
+        if args.unipipedp_scheduler:
+            current_interval_start_timestamp = start_timestamp + cur_ipriteration * time_stretch_continuous_data_process + args.gtcount/args.acquisition_rate
+            current_timestamp = current_interval_start_timestamp
+        else:
+            current_interval_start_timestamp = start_timestamp + cur_ipriteration * time_stretch_continuous_data_process
+            current_timestamp = current_interval_start_timestamp
+
         while current_timestamp - current_interval_start_timestamp < time_stretch_continuous_data_process:
             # to indicate consumption tp transmit process the data is deleted
             try:
@@ -143,24 +159,15 @@ if __name__=="__main__":
                     parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_generate_idx),
                     cur_folder
                 )
-                # retry_attempt = 0
             except FileNotFoundError as e:
-                # current_generate_idx += 1
-                # print(current_generate_idx, list(os.listdir("/dev/shm/"))[-12:-1])
                 current_timestamp = time.time()
                 total_missed += 1
-                # current_generate_idx += 1
-                # retry_attempt = 0
-                # time.sleep(1/args.acquisition_rate)
-                # print(e)
                 continue
 
             # time gap to wait for the generation
             # it will be a busy loop
-            current_timestamp = time.time()
             while current_timestamp - data_process_interval_start_timestamp < 1/args.generation_rate:
                 current_timestamp = time.time()
-            data_process_interval_start_timestamp = current_timestamp
 
             # create the data in shared memory space /dev/shm
             ipc.create_shm_data(
@@ -173,6 +180,7 @@ if __name__=="__main__":
 
             # increase generation idx
             current_generate_idx += 1
+            data_process_interval_start_timestamp += 1 / args.generation_rate
             current_timestamp = time.time()
         # one ipr interval done
         ipc.create_shm_marker(parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration))
