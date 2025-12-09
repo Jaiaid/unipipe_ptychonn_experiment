@@ -314,17 +314,6 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     return metrics, total_consumed, total_missed, time_uf, time_ub
 
 
-# signal producer to indicate finish of initiation
-# then it will wait for transmission start
-# this is part of mechanism to synchronize start of transmission and processing
-def signal_producer():
-    ptychonn.ipc.create_shm_marker(ptychonn.parameters.SHM_MARKER_ML_INIT_FINISH)
-
-# blocking function to wait for producer to start transmission
-# this is part of mechanism to synchronize start of transmission and processing
-def producer_transmit_wait():
-    while not ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_TRANSMIT_START):
-        pass
 
 
 if __name__ == "__main__":
@@ -435,20 +424,8 @@ if __name__ == "__main__":
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
         acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
     )
-
-
-    # signal producer that done, needed if initiation become expensive
-    signal_producer()
-    # wait for producer to start transmission
-    producer_transmit_wait()
     
-    # training state controller variable initiation
-    start_time = time.time()
-    print("starting ", start_time)
     cur_ipriteration = -1
-    cur_interval = 1
-    current_time = start_time
-    cur_interval_start_time = current_time
     
     if args.large_dataset:
         total_runtime = args.interval_count * args.interval_duration
@@ -457,18 +434,20 @@ if __name__ == "__main__":
         total_runtime = args.interval_count * args.interval_duration
 
     # to give producer time to put first data
-    # time.sleep(1/args.datarate)
     time_list = []
-    logger.log("INTERVAL START {0}".format(cur_interval))
+
+    # signal producer that done, needed if initiation become expensive
+    ptychonn.ipc.signal_producer_from_ML_surrogate()
+    # wait for producer to start transmission
+    start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
+    current_time = start_time
+    cur_interval_start_time = current_time
+
+    # training state controller variable initiation
+    logger.log("STARTING ", start_time)
+
     while current_time - start_time < total_runtime:
         current_time = time.time()
-        if current_time - cur_interval_start_time > args.interval_duration:
-            # mark of interval start
-            logger.log("INTERVAL END {0}".format(cur_interval))
-            cur_interval += 1
-            cur_interval_start_time = current_time
-            # mark of interval start
-            logger.log("INTERVAL START {0}".format(cur_interval))
 
         # checking for signal existance from IPR process
         # this progression needs to be done irrespective of interval

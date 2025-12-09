@@ -141,11 +141,6 @@ def multicontext_inferonly_process(
     return metrics, total_consumed
 
 
-# blocking function to wait for producer to start transmission
-# this is part of mechanism to synchronize start of transmission and processing
-def producer_transmit_wait():
-    while not ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_TRANSMIT_START):
-        pass
 
 
 if __name__ == "__main__":
@@ -222,16 +217,8 @@ if __name__ == "__main__":
             chkpt_dir=multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(0))
     logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
-    # wait to synchronize time calculation with produce process
-    producer_transmit_wait()
-    print("multicontext infer consumption start ", time.time())
-    
     # training state controller variable initiation
-    start_time = time.time()
     cur_ipriteration = -1
-    cur_interval = 1
-    current_time = start_time
-    cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
 
     # estimate ipriteration time limit from perf. model
@@ -251,19 +238,17 @@ if __name__ == "__main__":
 
     total_consumed = 0
 
-    # to give producer time to put first data
-    # time.sleep(1/args.datarate)
+    # wait to synchronize time calculation with produce process
+    start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
+    print("multicontext infer consumption start ", time.time())
+    current_time = start_time
+    cur_interval_start_time = current_time
 
-    logger.log("INTERVAL START {0}".format(cur_interval))
+    # to give producer time to put first data
+    time.sleep(1/args.datarate)
+
     while current_time - start_time < total_runtime:
         current_time = time.time()
-        if current_time - cur_interval_start_time > args.interval_duration:
-            # mark of interval start
-            logger.log("INTERVAL END {0}".format(cur_interval))
-            cur_interval += 1
-            cur_interval_start_time = current_time
-            # mark of interval start
-            logger.log("INTERVAL START {0}".format(cur_interval))
 
         # start of current interval processing
         # checking for signal existance from IPR process

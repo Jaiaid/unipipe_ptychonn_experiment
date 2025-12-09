@@ -321,18 +321,6 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
     return metrics, total_consumed, total_missed, time_uf, time_ub
 
 
-# signal producer to indicate finish of initiation
-# then it will wait for transmission start
-# this is part of mechanism to synchronize start of transmission and processing
-def signal_producer():
-    ptychonn.ipc.create_shm_marker(ptychonn.parameters.SHM_MARKER_ML_INIT_FINISH)
-
-# blocking function to wait for producer to start transmission
-# this is part of mechanism to synchronize start of transmission and processing
-def producer_transmit_wait():
-    while not ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_TRANSMIT_START):
-        pass
-
 
 if __name__ == "__main__":
     # for reproducability
@@ -428,11 +416,11 @@ if __name__ == "__main__":
     
 
     deadline_sec = args.deadline / 1000
-    unipipe_time_limit = deadline_sec# args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
     unipipe_time_limit, iteration_schedule = ptychonn.perf_model.estimate_unipipe_schedule(
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
         acquisition_rate=args.datarate, ground_truth_count=args.gtcount
     )
+    logger.log("UNIPIPE TIME LIMIT,SCHEDULE", unipipe_time_limit, iteration_schedule)
 
     # warmup run
     warmup_start_time = time.time()
@@ -444,38 +432,26 @@ if __name__ == "__main__":
             time_limit=args.deadline/1000, iteration_schedule=iteration_schedule)
     logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
-    # signal producer that done, needed if initiation become expensive
-    signal_producer()
-    # wait for producer to start transmission
-    producer_transmit_wait()
-    
-    # training state controller variable initiation
-    start_time = time.time()
-    print("starting ", start_time)
     cur_ipriteration = -1
-    cur_interval = 1
-    current_time = start_time
-    cur_interval_start_time = current_time
-    
-    if args.large_dataset:
-        total_runtime = args.interval_count * args.interval_duration
-    else:
-        # first interval data is used to pretrain the model
-        total_runtime = args.interval_count * args.interval_duration
 
     # to give producer time to put first data
     # time.sleep(1/args.datarate)
     time_list = []
-    logger.log("INTERVAL START {0}".format(cur_interval))
+
+    # signal producer that done, needed if initiation become expensive
+    ptychonn.ipc.signal_producer_from_ML_surrogate()
+    # wait for producer to start transmission
+    start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
+    current_time = start_time
+    cur_interval_start_time = current_time
+
+    # training state controller variable initiation
+    logger.log("STARTING ", start_time)
+    # to give some time to producer to put first data
+    time.sleep(1/args.datarate)
+
     while current_time - start_time < total_runtime:
         current_time = time.time()
-        if current_time - cur_interval_start_time > args.interval_duration:
-            # mark of interval start
-            logger.log("INTERVAL END {0}".format(cur_interval))
-            cur_interval += 1
-            cur_interval_start_time = current_time
-            # mark of interval start
-            logger.log("INTERVAL START {0}".format(cur_interval))
 
         # checking for signal existance from IPR process
         # this progression needs to be done irrespective of interval
@@ -496,6 +472,7 @@ if __name__ == "__main__":
             
             trainsize = int(math.floor(unipipe_time_limit * args.ipr_throughput))
             infersize = int(math.floor(unipipe_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+
             # for inference location on datastream repositioning
             train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
             logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)

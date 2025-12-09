@@ -118,17 +118,7 @@ def pretrained_inferonly_process(
 
     return metrics, total_consumed
 
-# signal producer to indicate finish of initiation
-# then it will wait for transmission start
-# this is part of mechanism to synchronize start of transmission and processing
-def signal_producer():
-    ptychonn.ipc.create_shm_marker(ptychonn.parameters.SHM_MARKER_ML_INIT_FINISH)
 
-# blocking function to wait for producer to start transmission
-# this is part of mechanism to synchronize start of transmission and processing
-def producer_transmit_wait():
-    while not ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_TRANSMIT_START):
-        pass
 
 
 if __name__ == "__main__":
@@ -199,17 +189,8 @@ if __name__ == "__main__":
     #     logger=logger, datarate=args.datarate, time_limit=args.deadline/1000)
     logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
     
-    # signal producer that done, needed if initiation become expensive
-    signal_producer()
-    # wait to synchronize time calculation with produce process
-    producer_transmit_wait()
-    
     # training state controller variable initiation
-    start_time = time.time()
     cur_ipriteration = -1
-    cur_interval = 1
-    current_time = start_time
-    cur_interval_start_time = current_time
     deadline_sec = args.deadline / 1000
     # estimate ipriteration time limit from perf. model
     # for coordination with ground truth data generation
@@ -226,21 +207,19 @@ if __name__ == "__main__":
         # first interval data is used to pretrain the model
         total_runtime = args.interval_count * args.interval_duration
 
+    # signal producer that done, needed if initiation become expensive
+    ptychonn.ipc.signal_producer_from_ML_surrogate()
+    # wait to synchronize time calculation with produce process
+    start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
+    current_time = start_time
+    cur_interval_start_time = current_time
+
     # to give producer time to put first data
-    # time.sleep(1/args.datarate)
+    time.sleep(1/args.datarate)
 
     print("pretrained consumption start ", time.time())
-    logger.log("INTERVAL START {0}".format(cur_interval))
     while current_time - start_time < total_runtime:
         current_time = time.time()
-        if current_time - cur_interval_start_time > args.interval_duration:
-            # mark of interval start
-            logger.log("INTERVAL END {0}".format(cur_interval))
-            cur_interval += 1
-            cur_interval_start_time = current_time
-            # mark of interval start
-            logger.log("INTERVAL START {0}".format(cur_interval))
-
 
         ipriter_time_start = time.time()
         # start of current interval processing
