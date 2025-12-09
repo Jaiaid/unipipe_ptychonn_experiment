@@ -1,0 +1,25 @@
+#!/bin/bash
+
+RESULT_LOG_DIR=result_logs
+
+FIG_DIR="eval_figures"
+mkdir -p $FIG_DIR
+
+# dataset 1
+python3 plot_missrate_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/smalldataset_deadlinevariation -o $FIG_DIR/fig_missrate_deadlinevariation_dataset1
+python3 plot_missrate_barclusters_bratevariation.py -d $RESULT_LOG_DIR/smalldataset_bratevariation -o $FIG_DIR/fig_missrate_bratevariation_dataset1
+python3 plot_missrate_barclusters_dratevariation.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_missrate_dratevariation_dataset1
+
+python3 plot_nnerror_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/smalldataset_deadlinevariation -o $FIG_DIR/fig_nnerror_deadlinevariation_dataset1
+python3 plot_nnerror_barclusters_bratevariation.py -d $RESULT_LOG_DIR/smalldataset_bratevariation -o $FIG_DIR/fig_nnerror_bratevariation_dataset1
+python3 plot_nnerror_barclusters_dratevariation.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nnerror_dratevariation_dataset1
+
+
+# dataset 2
+python3 plot_missrate_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/largedataset_deadlinevariation -o $FIG_DIR/fig_missrate_deadlinevariation_dataset2
+python3 plot_missrate_barclusters_bratevariation.py -d $RESULT_LOG_DIR/largedataset_bratevariation -o $FIG_DIR/fig_missrate_bratevariation_dataset2
+python3 plot_missrate_barclusters_dratevariation.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_missrate_dratevariation_dataset2
+
+python3 plot_nnerror_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/largedataset_deadlinevariation -o $FIG_DIR/fig_nnerror_deadlinevariation_dataset2
+python3 plot_nnerror_barclusters_bratevariation.py -d $RESULT_LOG_DIR/largedataset_bratevariation -o $FIG_DIR/fig_nnerror_bratevariation_dataset2
+python3 plot_nnerror_barclusters_dratevariation.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nnerror_dratevariation_dataset2
