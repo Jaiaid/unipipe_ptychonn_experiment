@@ -34,31 +34,9 @@ from ptychonn import perf_model
     # return phase_retrieval_genrate * deadline_sec / (acquisition_rate - phase_retrieval_genrate)
 
 
-# the synchronization of transmission and producing like following
-# consumer signal finish initiation, keeps waiting for producer to start transmission
-# producer waits for finish consumer initiation, then signal transmission start
-
-# signal producer to indicate finish of initiation
-# then it will wait for transmission start
-# this is part of mechanism to synchronize start of transmission and processing
-def signal_producer():
-    ipc.create_shm_marker(parameters.SHM_MARKER_IPR_INIT_FINISH)
-
-
-# blocking function to wait for producer to start transmission
-# this is part of mechanism to synchronize start of transmission and processing
-def producer_transmit_wait():
-    while not ipc.exist_shm(parameters.SHM_MARKER_TRANSMIT_START):
-        pass
-    # for timestamp sync
-    with open("/dev/shm/{0}".format(parameters.SHM_MARKER_TIMESTAMP_SYNC), "r") as fd:
-        marker_content = fd.read()
-        start_timestamp = float(marker_content)
-
-    return start_timestamp
-
 def cleanup():
     ipc.remove_shm(parameters.SHM_MARKER_IPR_INIT_FINISH)
+
 
 
 if __name__=="__main__":
@@ -72,7 +50,7 @@ if __name__=="__main__":
     parser.add_argument("--deadline-msec", "-d", type=float, help="after how many millisecond a data file in shm will be removed, also determines interval length")
     parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     parser.add_argument("--interval-count", "-icount", type=int, help="how many interval to run for")
-    parser.add_argument("--interval-duration", "-idur", type=int, required=True, help="length of interval in seconds")
+    parser.add_argument("--interval-duration", "-idur", type=float, required=True, help="length of interval in seconds")
     parser.add_argument("--interval-one-oracle", "-i", action="store_true", help="first interval all ground truth data will be made available")
     parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be used")
     parser.add_argument("--unipipe-scheduler", "-unipipe", action="store_true", help="if working with unipipe scheduler")
@@ -126,10 +104,10 @@ if __name__=="__main__":
 
     # signal finish of initiation
     print("signaling producer")
-    signal_producer()
+    ipc.signal_producer_from_computation()
     print("waiting for produce acknowledgement of starting", time.time())
     # blockingwait until data streaming start
-    start_timestamp = producer_transmit_wait()
+    start_timestamp, total_streamtime = ipc.producer_transmit_wait()
     print("data capture start", start_timestamp)
 
     current_timestamp = start_timestamp
@@ -141,18 +119,20 @@ if __name__=="__main__":
     else:
         time.sleep(1/args.acquisition_rate)
 
-    while current_timestamp - start_timestamp < args.interval_count * args.interval_duration:
+    while current_timestamp - start_timestamp < total_streamtime:
         cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
         ipc.create_shm_folder(cur_folder)
 
         if args.unipipedp_scheduler:
             current_interval_start_timestamp = start_timestamp + cur_ipriteration * time_stretch_continuous_data_process + args.gtcount/args.acquisition_rate
-            current_timestamp = current_interval_start_timestamp
         else:
-            current_interval_start_timestamp = start_timestamp + cur_ipriteration * time_stretch_continuous_data_process
-            current_timestamp = current_interval_start_timestamp
+            current_interval_start_timestamp = start_timestamp + cur_ipriteration * time_stretch_continuous_data_process + 1/args.acquisition_rate
+        
+        current_timestamp = current_interval_start_timestamp
+        data_process_interval_start_timestamp = current_interval_start_timestamp
+        generation_count_in_interval = 0
 
-        while current_timestamp - current_interval_start_timestamp < time_stretch_continuous_data_process:
+        while generation_count_in_interval < args.gtcount and current_timestamp - current_interval_start_timestamp < time_stretch_continuous_data_process:
             # to indicate consumption tp transmit process the data is deleted
             try:
                 ipc.move_shm(
@@ -177,6 +157,7 @@ if __name__=="__main__":
                 os.path.join(cur_folder, parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(current_generate_idx)),
                 gt_data_ph[current_generate_idx])
             total_generated += 1
+            generation_count_in_interval += 1
 
             # increase generation idx
             current_generate_idx += 1

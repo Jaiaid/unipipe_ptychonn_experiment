@@ -27,25 +27,6 @@ from ptychonn import parameters
 from ptychonn import dataset
 
 
-# the synchronization of transmission and producing like following
-# consumer signal finish initiation, keeps waiting for producer to start transmission
-# producer waits for finish consumer initiation, then signal transmission start
-
-# blocking function to wait for consumer to start initiation
-# this is part of mechanism to synchronize start of transmission and processing
-def consumer_init_wait():
-    # wait for IPR process to finish initiation
-    while not ipc.exist_shm(parameters.SHM_MARKER_IPR_INIT_FINISH):
-        pass
-    # wait for ML process to finish initiation
-    while not ipc.exist_shm(parameters.SHM_MARKER_ML_INIT_FINISH):
-        pass
-
-
-def signal_consumer():
-    ipc.create_shm_marker(parameters.SHM_MARKER_TRANSMIT_START)
-
-
 def cleanup(args):
     if not args.no_sync:
         ipc.remove_shm(parameters.SHM_MARKER_TRANSMIT_START)
@@ -91,9 +72,10 @@ if __name__=="__main__":
     # wait for consumer to finish initiation
     print("waiting for consumer to join")
     if not args.no_sync:
-        consumer_init_wait()
+        ipc.consumer_init_wait()
     # indicate start of activity
-    signal_consumer()
+    start_timestamp = time.time()
+    ipc.signal_streamstart_to_consumer(timestamp=start_timestamp, total_runtime=total_image_count/args.rate)
 
     total_deviation = 0
     deviation_case_count = 0
@@ -103,7 +85,6 @@ if __name__=="__main__":
     # removal_loop_iteration_mean = 0
     # removal_loop_iteration_mean_count = 0
 
-    start_timestamp = time.time()
     print("starting transmission", start_timestamp)
     data_interval_start_timestamp = start_timestamp
     for i in range(diffr_data.shape[0]):
@@ -113,12 +94,12 @@ if __name__=="__main__":
             first_delete_idx = next_delete_idx
             initial_missed_count = missed
             while next_delete_idx < len(deadline_time_list) and deadline_time_list[next_delete_idx] < current_timestamp:
-                if ipc.exist_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx)):
+                try:
                     ipc.move_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx), parameters.SHM_MARKER_STALE_FOLDER)
                     missed += 1
                     if next_delete_idx > total_image_count/5:
                         missed_nonpretrained += 1
-                else:
+                except FileNotFoundError as e:
                     consumed += 1
                     if next_delete_idx > total_image_count/5:
                         consumed_nonpretrained += 1
@@ -136,19 +117,13 @@ if __name__=="__main__":
 
             # we assume deadline >> interval between two data samples
             # therefore, waiting for new data to arrive will not cause deadline to be over significantly
-            data_created = False
             while current_timestamp - data_interval_start_timestamp < 1/args.rate:# - 0.0000011:
                 busyloop_iteration_count += 1
-                if not data_created:
-                    data_created = True
-                    # create the data in shared memory space /dev/shm
-                    ipc.create_shm_data(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_transmit_idx), diffr_data[i,j])
-        
+
                 current_timestamp = time.time()
             busyloop_count += 1
 
-            if not data_created:
-                ipc.create_shm_data(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_transmit_idx), diffr_data[i,j])
+            ipc.create_shm_data(parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_transmit_idx), diffr_data[i,j])
 
             if args.debug_log:
                 print("Created sample {0}".format(current_transmit_idx))
