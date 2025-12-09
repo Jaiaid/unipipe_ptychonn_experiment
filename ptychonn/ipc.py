@@ -1,8 +1,12 @@
 import os
 import numpy as np
 
-def create_shm_marker(name:str):
+from . import parameters
+
+def create_shm_marker(name:str, data:float=None):
     fd = open(os.path.join("/dev/shm", name), "w")
+    if data is not None:
+        fd.write(str(data))
     fd.close()
 
 def create_shm_folder(dirname:str):
@@ -14,6 +18,7 @@ def create_shm_data(name:str, data:np.ndarray):
     # and both processes know in which format data will come 
     # otherwise it will not work
     data.tofile(os.path.join("/dev/shm", name))
+    os.sync()
 
 
 def read_shm_data(name:str, dtype=np.float32) -> np.ndarray:
@@ -36,7 +41,58 @@ def move_shm(rel_path:str, new_rel_dirpath:str):
         os.path.join(os.path.join("/dev/shm", new_rel_dirpath), basename))
 
 def remove_shm(rel_path:str):
-    return os.remove(os.path.join("/dev/shm", rel_path))
+    res = os.remove(os.path.join("/dev/shm", rel_path))
+    os.sync()
+    return res
+
+
+# the synchronization of transmission and producing like following
+# producer waits for finish consumer initiation
+# consumer signal finish initiation, keeps waiting for producer to start transmission
+# producer informs of starting stream, start timestamp and total stream length
+
+# blocking function to wait for consumer to start initiation
+# this is part of mechanism to synchronize start of transmission and processing
+def consumer_init_wait():
+    # wait for IPR process to finish initiation
+    while not exist_shm(parameters.SHM_MARKER_IPR_INIT_FINISH):
+        pass
+
+# signal producer to indicate finish of initiation
+# then it will wait for transmission start
+# this is part of mechanism to synchronize start of transmission and processing
+def signal_producer_from_computation():
+    create_shm_marker(parameters.SHM_MARKER_IPR_INIT_FINISH)
+
+# signal producer to indicate finish of initiation
+# then it will wait for transmission start
+# this is part of mechanism to synchronize start of transmission and processing
+def signal_producer_from_ML_surrogate():
+    create_shm_marker(parameters.SHM_MARKER_ML_INIT_FINISH)
+
+# blocking function to wait for producer to start transmission
+# this is part of mechanism to synchronize start of transmission and processing
+def producer_transmit_wait():
+    while not exist_shm(parameters.SHM_MARKER_TRANSMIT_START):
+        pass
+    
+    # for timestamp sync and stream length
+    with open("/dev/shm/{0}".format(parameters.SHM_MARKER_TIMESTAMP_SYNC), "r") as fd:
+        marker_content = fd.read()
+        start_timestamp = float(marker_content.split("\n")[0])
+        stream_length = float(marker_content.split("\n")[1])
+
+    return start_timestamp, stream_length
+
+
+# After producer get signal from consumer indicating initiation finish, 
+# it will signal consumer to start transmission
+def signal_streamstart_to_consumer(timestamp=None, total_runtime=None):
+    # creating the markers in this sequence is important
+    # otherwise the consumers may start reading unfinished data
+    # they read SHM_MARKER_TIMESTAMP_SYNC only after SHM_MARKER_TRANSMIT_START is created
+    create_shm_marker(parameters.SHM_MARKER_TIMESTAMP_SYNC, data=str(timestamp)+"\n"+str(total_runtime))
+    create_shm_marker(parameters.SHM_MARKER_TRANSMIT_START)
 
 
 if __name__=="__main__":
