@@ -1,3 +1,5 @@
+import math
+import time
 import os
 import numpy as np
 
@@ -22,12 +24,15 @@ class SHMInferDataReader():
            call .reposition() explitictly to avoid that. Otherwise, multiple read call 
            may return nothing until bs indices is passed and current existing idx is reached 
     """
-    def __init__(self, bs=64, dryrun_mode=False):
+    def __init__(self, bs=64, dryrun_mode=False, start_timestamp=None, datarate=None, deadline_sec=None):
         self.cur_readidx = 0
         self.len = 0
         self.batch_size = bs
         self.dataara = np.asarray(np.random.rand(bs,1,64,64),dtype=np.float32)
         self.dryrun_mode = True
+        self.start_timestamp = start_timestamp
+        self.datarate = datarate
+        self.deadline_sec = deadline_sec
 
     def set_len(self, len):
         self.len = len
@@ -40,6 +45,13 @@ class SHMInferDataReader():
         missed = 0
         dataidx_list = []
         ara = None
+
+        if self.start_timestamp is not None and self.datarate is not None:
+            # adjust read idx according to current time
+            expected_idx = max(0, math.floor((time.time() - self.start_timestamp - self.deadline_sec) * self.datarate))
+            if self.cur_readidx < expected_idx:
+                # print("Repositioned infer read idx to ", expected_idx+1, " from expected idx ", self.cur_readidx, time.time())
+                self.cur_readidx = expected_idx
 
         # to handle initial condition
         # as inference probe is always behind at the beginning it is possible read idx set at negative
@@ -70,7 +82,7 @@ class SHMInferDataReader():
                     ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
                     consumed += 1
                     self.cur_readidx += 1
-                except FileNotFoundError:
+                except FileNotFoundError as e:
                     missed += 1
                     self.cur_readidx += 1
                     if not self.dryrun_mode:
