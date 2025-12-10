@@ -35,44 +35,53 @@ import logfast.fastlogger
 
 def pretrained_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
-        inferdatalist_fileobj, ipriteration_no,
-        logger:logfast.fastlogger.FastLogger, datarate:float, time_limit=None):
+        datarate:float, start_timestamp:float, time_limit:float,
+        inferdatalist_fileobj, logger:logfast.fastlogger.FastLogger):
 
     logger.log("PRETRAINED BEGIN")
 
-    start_time = time.time()
-    
     # to store training related metrics
     total_consumed = 0
     total_missed = 0
     total_iter_count = 0
     # this is not needed I kept it from the beginning that's why not want to remove
     metrics = {}
-    # got from profile data
-    inferbs = 64
-    inference_iter_count = 0
-    iteration_start_time = time.time()
     
-    while time.time() - start_time < time_limit and total_consumed < len(teststream):
-        logger.log("PRETRAINED ITERATION START", total_iter_count)
-        # first take from test
-        infer_count = 0
+    iteration_start_time = time.time()
+    last_consumption_time = start_timestamp
+    inference_iter_count = 0
+    ipriteration_no = 0
 
-        try:
-            infer_batch, consumed, missed, inferidxlist = teststream.read(
-                bs=min(inferbs, len(teststream) - total_consumed))
+    while time.time() - start_timestamp < time_limit and total_consumed < len(teststream):
+        # measure how much in the queue based on time
+        inferbs = min(
+            ptychonn.parameters.INFERENCE_BATCH_SIZE, 
+            int(math.floor(datarate * (time.time() - last_consumption_time)))
+        )
+        logger.log("PRETRAINED ACCUMULATED COUNT", inferbs, last_consumption_time)
+        inferbs = 32
+        while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
+            pass
+        # print(len(teststream)-total_consumed, inferbs)
+        if inferbs > 0:
+            try:
+                infer_batch, consumed, missed, inferidxlist = teststream.read(
+                    bs=min(inferbs, len(teststream) - total_consumed))
 
-            if infer_batch is not None:
-                infer_count = infer_batch.shape[0]
-                inference_iter_count += 1
-                total_missed += missed
-                total_consumed += infer_count
-        except Exception as e:
-            print(e)
+                if infer_batch is not None:
+                    infer_count = infer_batch.shape[0]
+                    total_missed += missed
+                    total_consumed += infer_count
+            except Exception as e:
+                print(e)
+                continue
+
+        if inferbs == 0:
             continue
 
-
-        forward_pass_arrival_time = time.time()
+        last_consumption_time = time.time()
+        forward_pass_arrival_time = last_consumption_time
+        logger.log("PRETRAINED INFER READ LATENCY", iteration_start_time - last_consumption_time)
         # move the infer data to GPU
         ft_images = torch.tensor(infer_batch).to("cuda")
 
@@ -108,8 +117,9 @@ def pretrained_inferonly_process(
         # busy wait to ensure enough data accumulated
         # while ptychonn.parameters.INFERENCE_BATCH_SIZE/datarate > time.time() - iteration_start_time:
         #     pass
-        logger.log("ITERATION TIME", time.time() - iteration_start_time)
-        iteration_start_time = time.time()
+        tmp = time.time()
+        logger.log("ITERATION TIME", tmp - iteration_start_time)
+        iteration_start_time = tmp
 
     if total_consumed >= len(infer_datareader):
         logger.log("ALL INFER DATA CONSUMED")
@@ -117,7 +127,6 @@ def pretrained_inferonly_process(
     logger.log("TOTAL CONSUMED", total_consumed)
 
     return metrics, total_consumed
-
 
 
 
@@ -154,7 +163,9 @@ if __name__ == "__main__":
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    # GPU environment is assumend
+    model.to("cuda")
+
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
@@ -162,8 +173,8 @@ if __name__ == "__main__":
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
-    # GPU environment is assumend
-    model.to("cuda")
+
+    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
 
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
@@ -176,8 +187,6 @@ if __name__ == "__main__":
         "/dev/shm/inferdatalist_pretrained_{0}_{1}_{2}_{3}.csv".format(
             args.interval_count, args.interval_duration, args.datarate, int(args.ipr_throughput)), "w") 
 
-    # init the data reader
-    infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
     # infer_datareader.set_len(args.datarate * args.interval_duration)
 
     # warmup run
@@ -190,16 +199,7 @@ if __name__ == "__main__":
     logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
     
     # training state controller variable initiation
-    cur_ipriteration = -1
     deadline_sec = args.deadline / 1000
-    # estimate ipriteration time limit from perf. model
-    # for coordination with ground truth data generation
-    # although we are not training here, to make things fair with unipipe
-    # we have to generate some ground truth data
-    ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR_pretrained(
-        phase_retrieval_genrate=args.ipr_throughput, acquisition_rate=args.datarate,
-        deadline_sec=deadline_sec, nn_uf=nn_uf, nn_ub=0
-    )
 
     if args.large_dataset:
         total_runtime = args.interval_count * args.interval_duration
@@ -209,62 +209,39 @@ if __name__ == "__main__":
 
     # signal producer that done, needed if initiation become expensive
     ptychonn.ipc.signal_producer_from_ML_surrogate()
+    # as computation process is not existant, ML process also have to signal producer on behalf of computation
+    ptychonn.ipc.signal_producer_from_computation()
     # wait to synchronize time calculation with produce process
-    start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
-    current_time = start_time
-    cur_interval_start_time = current_time
+    start_timestamp, total_runtime = ptychonn.ipc.producer_transmit_wait()
+    current_time = start_timestamp
+    infersize = int(args.datarate * total_runtime)
+    # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
-        start_timestamp=start_time, datarate=args.datarate, deadline_sec=deadline_sec)
+        start_timestamp=start_timestamp, datarate=args.datarate, deadline_sec=args.deadline/1000
+    )
+    total_consumed = 0
 
-    # to give producer time to put first data
-    # time.sleep(1/args.datarate)
-
-    print("pretrained consumption start ", time.time())
-    while current_time - start_time < total_runtime:
-        current_time = time.time()
-
-        ipriter_time_start = time.time()
-        # start of current interval processing
-        # checking for signal existance from IPR process
-        # this progression needs to be done irrespective of interval
-        # as IPR will keep running for data from interval 0 also (for which model is already trained)
-        # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
-        # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
-        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
-            cur_ipriteration += 1
-            logger.log("IPR ITERATION START", cur_ipriteration)
-
-            # update the current inference idx and training data idx
-            # the files are named in such a way that
-            # t1 = time.time()
-            # infer_datareader.reposition()
-            # print("first infer data selection takes {0}s".format(time.time() - t1))
-
-            # args.ipr_throughput * deadline_sec / (args.datarate - args.ipr_throughput)
-            trainsize = int(math.floor(ipriter_time_limit * args.ipr_throughput))
-            infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
-
-            # for inference location on datastream repositioning
-            train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
-            logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)
-            infer_datareader.cur_readidx = train_readidx_curpos + trainsize
-            # set the reader length for the unipipe call
-            # to handle initial boundary condition
-            infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
-        else:
-            continue
-
+    logger.log("PRETRAINED CONSUMPTION START", start_timestamp)
+    
+    while current_time - start_timestamp < total_runtime:
+        infer_datareader.cur_readidx = total_consumed
+        # set the reader length for the unipipe call
+        # to handle initial boundary condition
+        infer_datareader.set_len(infersize - total_consumed)
+        # for inference location on datastream repositioning
+        logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize, total_runtime - (time.time() - start_timestamp))
+        
         # put unipipe traininfer for one ipriteration data here
         metrics, consumed = pretrained_inferonly_process(
             model, infer_datareader,
-            inferdatalist_fileobj=inferdatalist_file, ipriteration_no=cur_ipriteration, 
-            logger=logger, datarate=args.datarate, time_limit=ipriter_time_limit)
+            inferdatalist_fileobj=inferdatalist_file, start_timestamp=start_timestamp, 
+            logger=logger, datarate=args.datarate, time_limit=total_runtime - (time.time() - start_timestamp))
         
         # log how much ipr iteration matches with unipipe iteration
 
-        # busy wait until time is passed
-        while time.time() - ipriter_time_start < ipriter_time_limit:
-            pass
+        current_time = time.time()
+        total_consumed += consumed
+        logger.log("PRETRAINED INTERIM TOTAL CONSUMED", total_consumed)
 
 
     # postmortem of data, calculate error
