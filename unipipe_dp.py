@@ -409,9 +409,9 @@ if __name__ == "__main__":
     #     print("Pretrained Model Not Found...Exiting")
     #     exit()
     # init the data reader
-    infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
     train_datareader = ptychonn.shm_datareader.SHMTrainDataReader()
-    # wait to synchronize time calculation with produce process
+    infer_datareader = ptychonn.shm_datareader.SHMInferDataReader()
+    # wait to synchronize time calculation with produce processs
     print("waiting for others")
     
 
@@ -432,7 +432,7 @@ if __name__ == "__main__":
             time_limit=args.deadline/1000, iteration_schedule=iteration_schedule)
     logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
-    cur_ipriteration = -1
+    cur_ipriteration = 0
 
     # to give producer time to put first data
     # time.sleep(1/args.datarate)
@@ -444,24 +444,29 @@ if __name__ == "__main__":
     start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
     current_time = start_time
     cur_interval_start_time = current_time
+    infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
+        start_timestamp=start_time, datarate=args.datarate, deadline_sec=deadline_sec
+    )
 
     # training state controller variable initiation
     logger.log("STARTING ", start_time)
+    print("STARTING ", start_time)
     # to give some time to producer to put first data
-    time.sleep(1/args.datarate)
+    time.sleep(args.gtcount/args.datarate)
 
     while current_time - start_time < total_runtime:
-        current_time = time.time()
+        current_time = start_time + cur_ipriteration*unipipe_time_limit + args.gtcount/args.datarate
 
         # checking for signal existance from IPR process
         # this progression needs to be done irrespective of interval
         # as IPR will keep running for data from interval 0 also (for which model is already trained)
         # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
         # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
-        unipipe_time_start = time.time()
+        unipipe_time_start = current_time
 
-        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
-            cur_ipriteration += 1
+        # if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
+        if True:
+            # cur_ipriteration += 1
             logger.log("IPR ITERATION START", cur_ipriteration)
 
             # t1 = time.time()
@@ -471,17 +476,18 @@ if __name__ == "__main__":
             logger.log("TIPR LEN", unipipe_time_limit, nn_uf, nn_ub)
             
             trainsize = int(math.floor(unipipe_time_limit * args.ipr_throughput))
-            infersize = int(math.floor(unipipe_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+            infersize = int(math.ceil(unipipe_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
 
             # for inference location on datastream repositioning
             train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
-            logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - infersize + 1, infersize)
-            logger.log("TRAIN DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos, train_readidx_curpos - trainsize + 1, trainsize)
-            
             # infer_datareader.cur_readidx = train_readidx_curpos - infersize + 1
-            
             # infer_datareader.cur_readidx  = train_datareader.cur_readidx_begin - infersize + 1
             infer_datareader.cur_readidx = train_readidx_curpos + trainsize
+            
+            logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos - infersize + 1, infersize)
+            logger.log("TRAIN DATAREADER STATUS", train_readidx_curpos, train_readidx_curpos - trainsize + 1, trainsize)
+            # print("TRAIN DATAREADER STATUS", train_readidx_curpos, trainsize, time.time(), current_time)
+            # print("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize, time.time(), current_time)
             # set the reader length for the unipipe call
             # to handle initial boundary condition
             train_datareader.set_len(begin=train_readidx_curpos, end=train_readidx_curpos+trainsize-1)
@@ -532,7 +538,7 @@ if __name__ == "__main__":
         # if nn_uf is not None and nn_ub is not None:
         while time.time() - unipipe_time_start < unipipe_time_limit:
             pass
-        # print("Hi")
+        cur_ipriteration += 1
 
 
     # postmortem of data, calculate error
