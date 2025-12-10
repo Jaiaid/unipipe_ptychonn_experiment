@@ -159,7 +159,7 @@ def estimate_unipipe_schedule(
         (i, j) = (i-k, j-t)
     S.reverse()
 
-    T_IPR = ground_truth_count / phase_retrieval_genrate
+    T_IPR = math.ceil(Tk*acquisition_rate)/acquisition_rate
 
     return T_IPR, S
 
