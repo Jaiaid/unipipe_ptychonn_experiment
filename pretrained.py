@@ -213,9 +213,11 @@ if __name__ == "__main__":
     start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
     current_time = start_time
     cur_interval_start_time = current_time
+    infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
+        start_timestamp=start_time, datarate=args.datarate, deadline_sec=deadline_sec)
 
     # to give producer time to put first data
-    time.sleep(1/args.datarate)
+    # time.sleep(1/args.datarate)
 
     print("pretrained consumption start ", time.time())
     while current_time - start_time < total_runtime:
