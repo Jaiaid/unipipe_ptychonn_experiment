@@ -221,7 +221,7 @@ if __name__ == "__main__":
     )
     total_consumed = 0
 
-    logger.log("PRETRAINED CONSUMPTION START", start_timestamp)
+    logger.log("PRETRAINED NOIPR CONSUMPTION START", start_timestamp)
     
     while current_time - start_timestamp < total_runtime:
         infer_datareader.cur_readidx = total_consumed
