@@ -57,6 +57,8 @@ def consumer_init_wait():
     # wait for IPR process to finish initiation
     while not exist_shm(parameters.SHM_MARKER_IPR_INIT_FINISH):
         pass
+    while not exist_shm(parameters.SHM_MARKER_ML_INIT_FINISH):
+        pass
 
 # signal producer to indicate finish of initiation
 # then it will wait for transmission start
