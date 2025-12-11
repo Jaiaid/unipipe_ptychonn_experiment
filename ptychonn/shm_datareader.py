@@ -24,13 +24,15 @@ class SHMInferDataReader():
            call .reposition() explitictly to avoid that. Otherwise, multiple read call 
            may return nothing until bs indices is passed and current existing idx is reached 
     """
-    def __init__(self, bs=64, dryrun_mode=False, start_timestamp=None, datarate=None, deadline_sec=None):
+    def __init__(self, bs=64, dryrun_mode=False, start_timestamp=None, datarate=None, deadline_sec=None, stream_alive_time=None):
         self.cur_readidx = 0
         self.len = 0
         self.batch_size = bs
         self.dataara = np.asarray(np.random.rand(bs,1,64,64),dtype=np.float32)
         self.dryrun_mode = True
         self.start_timestamp = start_timestamp
+        self.last_read_timestamp = start_timestamp
+        self.stream_alive_time = stream_alive_time
         self.datarate = datarate
         self.deadline_sec = deadline_sec
 
@@ -40,18 +42,21 @@ class SHMInferDataReader():
     def __len__(self) -> int:
         return self.len
 
-    def read(self, bs) -> Tuple[np.ndarray, int, int, List[int]]:
+    def read(self, bs, logger=None, blocking_call=False) -> Tuple[np.ndarray, int, int, List[int]]:
         consumed = 0
         missed = 0
         dataidx_list = []
         ara = None
 
-        if self.start_timestamp is not None and self.datarate is not None:
-            # adjust read idx according to current time
-            expected_idx = max(0, math.floor((time.time() - self.start_timestamp - self.deadline_sec) * self.datarate))
-            if self.cur_readidx < expected_idx:
-                # print("Repositioned infer read idx to ", expected_idx+1, " from expected idx ", self.cur_readidx, time.time())
-                self.cur_readidx = expected_idx
+        self.reposition()
+
+        if blocking_call:
+            available_bs = int(math.floor(self.datarate * (time.time() - self.last_read_timestamp)))
+            # print(available_bs, bs, self.last_read_timestamp, self.start_timestamp, self.stream_alive_time)
+            # busy wait until enough data is available or time limit is reached
+            if available_bs < bs:
+                while int(math.floor(self.datarate * (time.time() - self.last_read_timestamp))) < bs and time.time() - self.start_timestamp < self.stream_alive_time:
+                    pass
 
         # to handle initial condition
         # as inference probe is always behind at the beginning it is possible read idx set at negative
@@ -83,17 +88,21 @@ class SHMInferDataReader():
                     consumed += 1
                     self.cur_readidx += 1
                 except FileNotFoundError as e:
+                    # print(e)
                     missed += 1
-                    self.cur_readidx += 1
                     if not self.dryrun_mode:
                         self.reposition()
                 except Exception as e:
-                    self.cur_readidx += 1
                     if not self.dryrun_mode:
                         self.reposition()
 
+        if ara is not None and ara.shape[0] > 0:
+            logger.log("SHM INFER DATA READER READ", ara.shape, self.cur_readidx, self.last_read_timestamp)
+            self.last_read_timestamp = self.start_timestamp + (self.cur_readidx / self.datarate)
+        
         if self.dryrun_mode:
             return self.dataara[:consumed,], consumed, missed, list(range(self.cur_readidx - bs, self.cur_readidx - bs + consumed))
+        
         return ara, consumed, missed, dataidx_list
     
     def reposition(self):
@@ -105,10 +114,16 @@ class SHMInferDataReader():
             
             For efficiency reason, it should be better called by consumer
         """
-        for filename in sorted(os.listdir("/dev/shm")):
-            if ".raw" in filename:
-                self.cur_readidx = int(filename.split(".")[0])
-                return
+        # for filename in sorted(os.listdir("/dev/shm")):
+        #     if ".raw" in filename:
+        #         self.cur_readidx = int(filename.split(".")[0])
+        #         return
+        if self.start_timestamp is not None and self.datarate is not None:
+            # adjust read idx according to current time
+            expected_idx = max(0, math.floor((time.time() - self.start_timestamp - self.deadline_sec) * self.datarate))
+            if self.cur_readidx < expected_idx:
+                # print("Repositioned infer read idx to ", expected_idx+1, " from expected idx ", self.cur_readidx, time.time())
+                self.cur_readidx = expected_idx
 
 
 class SHMTrainDataReader():
