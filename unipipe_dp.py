@@ -37,14 +37,14 @@ import logfast.fastlogger
 
 def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
                        teststream:ptychonn.shm_datareader.SHMInferDataReader,
-                       epoch_count, datarate, deadline_sec, 
+                       epoch_count, start_timestamp, datarate, deadline_sec, 
                        traindatalist_fileobj, inferdatalist_fileobj, ipriteration_no, chkpt_path,
                        logger:logfast.fastlogger.FastLogger, iteration_schedule=[],
                        time_limit=None, periter_validation=False, inffrac=1.0):
 
-    logger.log("UNIPIPE BEGIN")
-    logger.log("UNIPIPE TRAINING DATASET SIZE", len(trainloader))
-    logger.log("UNIPIPE INFER DATASET SIZE", len(teststream))
+    logger.log("UNIPIPE DP BEGIN")
+    logger.log("UNIPIPE DP TRAINING DATASET SIZE", len(trainloader))
+    logger.log("UNIPIPE DP INFER DATASET SIZE", len(teststream))
 
     start_time = time.time()
     interval_init_time = time.time()
@@ -87,7 +87,8 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
     # print("iterator creation time:", time.time() - iter_creation_start_time)
     # print("intialization time:", time.time() - interval_init_time)
 
-    train_start_time = time.time()
+    train_start_time = start_timestamp
+    last_consumption_time = start_timestamp
     # to control when the training of current interval will stop
     previous_loss = 0
     prev_val_loss = math.inf
@@ -125,11 +126,15 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
             infer_count = 0
 
             inferbs = iteration_schedule[cur_iteration_idx][1]
-            if total_consumed < len(teststream):
+            # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
+            #     pass
+            
+            if inferbs > 0 and total_consumed < len(teststream):
                 try:
-                    logger.log("READING FROM TEST STREAM", stream_read_error_count)
                     infer_batch, consumed, missed, inferidxlist = teststream.read(
-                        bs=min(inferbs, len(teststream) - total_consumed))
+                        bs=min(inferbs, len(teststream) - total_consumed), blocking_call=True
+                    )
+
                     # if consumed != inferbs:
                     # print(consumed) 
                     if infer_batch is not None:
@@ -137,8 +142,11 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                         inference_iter_count += 1
                         total_missed += missed
                         total_consumed += infer_count
+                        logger.log("TEST STREAM READ SUCCESS", infer_count, missed, total_consumed, len(teststream))
+                        last_consumption_time = time.time()
                     else:
                         stream_read_error_count += 1
+                        logger.log("TEST STREAM READ FAILED", stream_read_error_count)
                         if stream_read_error_count > 10:
                             total_consumed = len(teststream)
                 except Exception as e:
@@ -169,6 +177,8 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
             # or no infer data is in pipeline for now, so only training
             
             forward_pass_arrival_time = time.time()
+            logger.log("UNIPIPE READ LATENCY", forward_pass_arrival_time - iteration_start_time)
+
             if infer_count > 0 and not stop_train:
                 ft_images = torch.concat((torch.tensor(infer_batch), torch.tensor(train_batch[0])), axis=0).to("cuda")
             elif infer_count > 0 and stop_train:
@@ -420,13 +430,13 @@ if __name__ == "__main__":
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
         acquisition_rate=args.datarate, ground_truth_count=args.gtcount
     )
-    logger.log("UNIPIPE TIME LIMIT,SCHEDULE", unipipe_time_limit, iteration_schedule)
+    logger.log("UNIPIPE DP TIME LIMIT,SCHEDULE", unipipe_time_limit, iteration_schedule)
 
     # warmup run
     warmup_start_time = time.time()
     metrics, _, _, _, _ = unipipe_dp_traininfer(
             model, train_datareader, infer_datareader, epoch_count=1,
-            datarate=args.datarate, deadline_sec=args.deadline/1000,
+            start_timestamp=warmup_start_time, datarate=args.datarate, deadline_sec=args.deadline/1000,
             traindatalist_fileobj=traindatalist_file, inferdatalist_fileobj=inferdatalist_file, ipriteration_no=0,
             chkpt_path="dummy.pth", logger=logger, periter_validation=args.validation_training,
             time_limit=args.deadline/1000, iteration_schedule=iteration_schedule)
@@ -445,17 +455,18 @@ if __name__ == "__main__":
     current_time = start_time
     cur_interval_start_time = current_time
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
-        start_timestamp=start_time, datarate=args.datarate, deadline_sec=deadline_sec
+        start_timestamp=start_time, datarate=args.datarate,
+        deadline_sec=deadline_sec, stream_alive_time=total_runtime
     )
 
     # training state controller variable initiation
     logger.log("STARTING ", start_time)
-    print("STARTING ", start_time)
+    # print("STARTING ", start_time)
     # to give some time to producer to put first data
-    time.sleep(args.gtcount/args.datarate)
+    # time.sleep(args.gtcount/args.datarate)
 
     while current_time - start_time < total_runtime:
-        current_time = start_time + cur_ipriteration*unipipe_time_limit + args.gtcount/args.datarate
+        current_time = start_time + cur_ipriteration*unipipe_time_limit #+ args.gtcount/args.datarate
 
         # checking for signal existance from IPR process
         # this progression needs to be done irrespective of interval
@@ -465,35 +476,33 @@ if __name__ == "__main__":
         unipipe_time_start = current_time
 
         # if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
-        if True:
-            # cur_ipriteration += 1
-            logger.log("IPR ITERATION START", cur_ipriteration)
+        # cur_ipriteration += 1
+        logger.log("IPR ITERATION START", cur_ipriteration)
 
-            # t1 = time.time()
-            train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
-            # train_datareader.reposition()
-            
-            logger.log("TIPR LEN", unipipe_time_limit, nn_uf, nn_ub)
-            
-            trainsize = int(math.floor(unipipe_time_limit * args.ipr_throughput))
-            infersize = int(math.ceil(unipipe_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
+        # t1 = time.time()
+        train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
+        # train_datareader.reposition()
+        
+        logger.log("TIPR LEN", unipipe_time_limit, nn_uf, nn_ub)
+        
+        trainsize = int(math.floor(unipipe_time_limit * args.ipr_throughput))
+        infersize = int(math.ceil(unipipe_time_limit * (args.datarate - args.ipr_throughput))) # same as args.ipr_throughput * deadline_sec
 
-            # for inference location on datastream repositioning
-            train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
-            # infer_datareader.cur_readidx = train_readidx_curpos - infersize + 1
-            # infer_datareader.cur_readidx  = train_datareader.cur_readidx_begin - infersize + 1
-            infer_datareader.cur_readidx = train_readidx_curpos + trainsize
-            
-            logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, train_readidx_curpos - infersize + 1, infersize)
-            logger.log("TRAIN DATAREADER STATUS", train_readidx_curpos, train_readidx_curpos - trainsize + 1, trainsize)
-            # print("TRAIN DATAREADER STATUS", train_readidx_curpos, trainsize, time.time(), current_time)
-            # print("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize, time.time(), current_time)
-            # set the reader length for the unipipe call
-            # to handle initial boundary condition
-            train_datareader.set_len(begin=train_readidx_curpos, end=train_readidx_curpos+trainsize-1)
-            infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
-        else:
-            continue
+        # for inference location on datastream repositioning
+        train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
+        # infer_datareader.cur_readidx = train_readidx_curpos - infersize + 1
+        # infer_datareader.cur_readidx  = train_datareader.cur_readidx_begin - infersize + 1
+        # infer_datareader.cur_readidx = train_readidx_curpos + trainsize
+        
+        logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize)
+        logger.log("TRAIN DATAREADER STATUS", train_readidx_curpos, trainsize)
+        # print("TRAIN DATAREADER STATUS", train_readidx_curpos, trainsize, time.time(), current_time)
+        # print("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize, time.time(), current_time)
+        # set the reader length for the unipipe call
+        # to handle initial boundary condition
+        train_datareader.set_len(begin=train_readidx_curpos, end=train_readidx_curpos+trainsize-1)
+        infer_datareader.set_len(infersize if infer_datareader.cur_readidx >= 0 else 0)
+
             # print("first train data selection takes {0}s".format(time.time() - t1))
 
         # start of unipipe initiation and call
@@ -505,24 +514,24 @@ if __name__ == "__main__":
 
         # calculate number of epoch to run the unipipe train
         # it depends on some value which are unknown initially for that we just set an arbitrary value
-        if nn_uf is None or nn_ub is None:
-            # need one epoch to count the times
-            epoch_count = 1
-        elif trainsize == 0:
-            # if no training data just run an epoch but that will only consume inference data
-            epoch_count = 1
-        else:
-            # from performance model
-            epoch_count = 1 #int(round((unipipe_time_limit - nn_uf*infersize)/((nn_uf + nn_ub) * trainsize)))
-            logger.log("PRECISE EPOCH COUNT", (unipipe_time_limit - nn_uf*infersize)/((nn_uf + nn_ub) * trainsize))
-        # epoch_count=1
+        # if nn_uf is None or nn_ub is None:
+        #     # need one epoch to count the times
+        #     epoch_count = 1
+        # elif trainsize == 0:
+        #     # if no training data just run an epoch but that will only consume inference data
+        #     epoch_count = 1
+        # else:
+        #     # from performance model
+        #     epoch_count = 1 #int(round((unipipe_time_limit - nn_uf*infersize)/((nn_uf + nn_ub) * trainsize)))
+        #     logger.log("PRECISE EPOCH COUNT", (unipipe_time_limit - nn_uf*infersize)/((nn_uf + nn_ub) * trainsize))
+        epoch_count=1
         # put unipipe traininfer for one ipriteration data here
         metrics, _, _, _, _ = unipipe_dp_traininfer(
             model, train_datareader, infer_datareader, epoch_count=epoch_count,
-            datarate=args.datarate, deadline_sec=deadline_sec,
+            start_timestamp=time.time(), datarate=args.datarate, deadline_sec=args.deadline/1000,
             traindatalist_fileobj=traindatalist_file, inferdatalist_fileobj=inferdatalist_file, ipriteration_no=cur_ipriteration,
             chkpt_path="inctrained_interval{0}_model.pth".format(cur_ipriteration), logger=logger, periter_validation=args.validation_training,
-            time_limit=unipipe_time_limit, iteration_schedule=iteration_schedule)
+            time_limit=unipipe_time_limit - (time.time() - unipipe_time_start), iteration_schedule=iteration_schedule)
         # log how much ipr iteration matches with unipipe iteration
         time_taken = time.time() - unipipe_time_start
         logger.log(
@@ -538,7 +547,7 @@ if __name__ == "__main__":
         # if nn_uf is not None and nn_ub is not None:
         while time.time() - unipipe_time_start < unipipe_time_limit:
             pass
-        cur_ipriteration += 1
+        cur_ipriteration += int((time.time() - unipipe_time_start) // unipipe_time_limit)
 
 
     # postmortem of data, calculate error

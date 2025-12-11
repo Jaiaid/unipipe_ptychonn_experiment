@@ -47,7 +47,7 @@ def pretrained_inferonly_process(
     # this is not needed I kept it from the beginning that's why not want to remove
     metrics = {}
     
-    iteration_start_time = time.time()
+    iteration_start_time = start_timestamp
     last_consumption_time = start_timestamp
     inference_iter_count = 0
     ipriteration_no = 0
@@ -58,15 +58,16 @@ def pretrained_inferonly_process(
             ptychonn.parameters.INFERENCE_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
         )
-        logger.log("PRETRAINED NOIPR ACCUMULATED COUNT", inferbs, last_consumption_time)
-        inferbs = 32
-        while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
-            pass
+        logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time, teststream.last_read_timestamp, teststream.cur_readidx, len(teststream))
+        inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
+        # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
+        #     pass
         # print(len(teststream)-total_consumed, inferbs)
         if inferbs > 0:
             try:
                 infer_batch, consumed, missed, inferidxlist = teststream.read(
-                    bs=min(inferbs, len(teststream) - total_consumed))
+                    bs=min(inferbs, len(teststream) - total_consumed), logger=logger, blocking_call=True
+                )
 
                 if infer_batch is not None:
                     infer_count = infer_batch.shape[0]
@@ -76,12 +77,12 @@ def pretrained_inferonly_process(
                 print(e)
                 continue
 
-        if inferbs == 0:
+        if infer_count == 0:
             continue
 
         last_consumption_time = time.time()
         forward_pass_arrival_time = last_consumption_time
-        logger.log("PRETRAINED NOIPR INFER READ LATENCY", iteration_start_time - last_consumption_time)
+        logger.log("PRETRAINED NOIPR INFER READ LATENCY", last_consumption_time - iteration_start_time)
         # move the infer data to GPU
         ft_images = torch.tensor(infer_batch).to("cuda")
 
@@ -217,7 +218,8 @@ if __name__ == "__main__":
     infersize = int(args.datarate * total_runtime)
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
-        start_timestamp=start_timestamp, datarate=args.datarate, deadline_sec=args.deadline/1000
+        start_timestamp=start_timestamp, datarate=args.datarate,
+        deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
     )
     total_consumed = 0
 
