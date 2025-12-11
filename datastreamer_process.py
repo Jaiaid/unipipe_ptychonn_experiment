@@ -131,7 +131,7 @@ if __name__=="__main__":
             total_deviation = current_timestamp - (start_timestamp + (current_transmit_idx+1)/args.rate)
             deviation_case_count += 1
             # append to deadline list
-            deadline_time_list[current_transmit_idx] = current_timestamp + deadline_sec
+            deadline_time_list[current_transmit_idx] = start_timestamp + (current_transmit_idx+1)/args.rate + deadline_sec
             # increase transmit idx
             current_transmit_idx += 1
 
