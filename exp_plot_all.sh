@@ -23,3 +23,18 @@ python3 plot_missrate_barclusters_dratevariation.py -d $RESULT_LOG_DIR/largedata
 python3 plot_nnerror_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/largedataset_deadlinevariation -o $FIG_DIR/fig_nnerror_deadlinevariation_dataset2
 python3 plot_nnerror_barclusters_bratevariation.py -d $RESULT_LOG_DIR/largedataset_bratevariation -o $FIG_DIR/fig_nnerror_bratevariation_dataset2
 python3 plot_nnerror_barclusters_dratevariation.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nnerror_dratevariation_dataset2
+
+# analyze read stream wait time and bs variation
+python3 plot_read_streamwait_time.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_read_streamwait_time_smalldataset_dratevariation_dataset1
+python3 plot_read_streamwait_time.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_read_streamwait_time_largedataset_dratevariation_dataset2
+
+# analyze inference invocation time gap
+python3 ./plot_inference_invocation_gap.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_inference_invokegap_smalldataset_dratevariation_dataset1
+python3 ./plot_inference_invocation_gap.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nn_inference_invokegap_largedataset_dratevariation_dataset2
+
+# analyze forward backward pass latency
+python3 ./plot_forward_pass_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_forward_pass_latency_smalldataset_dratevariation_dataset1
+python3 ./plot_backward_pass_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_backward_pass_latency_smalldataset_dratevariation_dataset1
+python3 ./plot_iteration_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_iteration_latency_smalldataset_dratevariation_dataset1
+
+python3 ./plot_forward_pass_latency.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nn_forward_pass_latency_largedataset_dratevariation_dataset2
