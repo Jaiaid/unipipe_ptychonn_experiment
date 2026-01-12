@@ -336,7 +336,6 @@ if __name__ == "__main__":
 
     trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
     # from profile data, tuned for throughput
-    trainbs = 64
 
     # to give producer time to put first data
     # time.sleep(1/args.datarate)
@@ -370,7 +369,7 @@ if __name__ == "__main__":
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
 
             train_datareader.set_len(begin=train_readidx_curpos, end=train_readidx_curpos+trainsize-1)
-            epoch_count = 1 # ptychonn.parameters.EPOCHS
+            epoch_count = ptychonn.parameters.EPOCHS
         else:
             continue
             # print("first train data selection takes {0}s".format(time.time() - t1))
