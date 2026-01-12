@@ -29,12 +29,16 @@ class SHMInferDataReader():
         self.len = 0
         self.batch_size = bs
         self.dataara = np.asarray(np.random.rand(bs,1,64,64),dtype=np.float32)
-        self.dryrun_mode = True
+        self.dryrun_mode = dryrun_mode
         self.start_timestamp = start_timestamp
         self.last_read_timestamp = start_timestamp
         self.stream_alive_time = stream_alive_time
         self.datarate = datarate
         self.deadline_sec = deadline_sec
+        if self.deadline_sec is not None:
+            self.max_available_bs = int(self.deadline_sec * self.datarate)
+        else:
+            self.max_available_bs = None
 
     def set_len(self, len):
         self.len = len
@@ -45,19 +49,25 @@ class SHMInferDataReader():
     def read(self, bs, logger=None, blocking_call=False) -> Tuple[np.ndarray, int, int, List[int]]:
         consumed = 0
         missed = 0
+        file_notfound_exceptions = 0
+        exceptions = 0
         dataidx_list = []
         ara = None
 
         self.reposition()
 
+        if self.max_available_bs is not None:
+            bs = min (bs, self.max_available_bs)
+
+        available_bs = min(int(math.floor(self.datarate * (time.time() - self.last_read_timestamp))), self.max_available_bs)
         if blocking_call:
-            available_bs = int(math.floor(self.datarate * (time.time() - self.last_read_timestamp)))
             # print(available_bs, bs, self.last_read_timestamp, self.start_timestamp, self.stream_alive_time)
             # busy wait until enough data is available or time limit is reached
-            if available_bs < bs:
-                while int(math.floor(self.datarate * (time.time() - self.last_read_timestamp))) < bs and time.time() - self.start_timestamp < self.stream_alive_time:
-                    pass
+            while available_bs < bs and time.time() - self.start_timestamp < self.stream_alive_time:
+                available_bs = int(math.floor(self.datarate * (time.time() - self.last_read_timestamp)))
 
+        if logger is not None:
+            logger.log("EXPECTED AVAILABLE BS FOR READ", available_bs, bs, self.cur_readidx, self.last_read_timestamp)
         # to handle initial condition
         # as inference probe is always behind at the beginning it is possible read idx set at negative
         # the dataset size should also be set 0 but that check is not done here
@@ -67,38 +77,50 @@ class SHMInferDataReader():
                 try:
                     if not self.dryrun_mode:
                         # read it and add to batch
-                        if consumed == 0:
-                            ara = ipc.read_shm_data(
-                                parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                            ).reshape(1, 1, parameters.H, parameters.W)
-                        else:
-                            ara = np.vstack(
-                                (
-                                    ara, ipc.read_shm_data(
-                                        parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                                    ).reshape(1, 1, parameters.H, parameters.W)
-                                )
-                            )
-                        
-                        dataidx_list.append(self.cur_readidx)
+                        tmp_data = ipc.read_shm_data(
+                            parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                        )
 
-                    # inference will be done only once
-                    # so delete
-                    ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx))
-                    consumed += 1
-                    self.cur_readidx += 1
+                        if tmp_data is not None:
+                            if consumed == 0:
+                                ara = tmp_data.reshape(1, 1, parameters.H, parameters.W)
+                            else:
+                                ara = np.vstack(
+                                    (
+                                        ara, tmp_data.reshape(1, 1, parameters.H, parameters.W)
+                                    )
+                                )
+                        
+                            dataidx_list.append(self.cur_readidx)
+                            consumed += 1
+
+                            # inference will be done only once
+                            # so delete
+                            ipc.remove_shm(
+                                parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
+                            )
+
+                            self.cur_readidx += 1
                 except FileNotFoundError as e:
                     # print(e)
                     missed += 1
+                    file_notfound_exceptions += 1
                     if not self.dryrun_mode:
+                        if logger is not None:
+                            logger.log("SHM INFER DATA READER FILE NOT FOUND EXCEPTION AT READ IDX, REPOSITIONING", self.cur_readidx)  
                         self.reposition()
                 except Exception as e:
+                    # print(e)
+                    exceptions += 1
                     if not self.dryrun_mode:
+                        if logger is not None:
+                            logger.log("SHM INFER DATA READER EXCEPTION AT READ IDX, REPOSITIONING", self.cur_readidx)  
                         self.reposition()
 
+
         if ara is not None and ara.shape[0] > 0:
-            logger.log("SHM INFER DATA READER READ", ara.shape, self.cur_readidx, self.last_read_timestamp)
-            self.last_read_timestamp = self.start_timestamp + (self.cur_readidx / self.datarate)
+            logger.log("SHM INFER DATA READER READ", ara.shape, self.cur_readidx, file_notfound_exceptions, exceptions, self.last_read_timestamp)
+            self.last_read_timestamp = self.start_timestamp + ((self.cur_readidx-1) / self.datarate)
         
         if self.dryrun_mode:
             return self.dataara[:consumed,], consumed, missed, list(range(self.cur_readidx - bs, self.cur_readidx - bs + consumed))
@@ -120,7 +142,7 @@ class SHMInferDataReader():
         #         return
         if self.start_timestamp is not None and self.datarate is not None:
             # adjust read idx according to current time
-            expected_idx = max(0, math.floor((time.time() - self.start_timestamp - self.deadline_sec) * self.datarate))
+            expected_idx = max(0, math.floor((time.time() - self.start_timestamp - self.deadline_sec*9/10) * self.datarate))
             if self.cur_readidx < expected_idx:
                 # print("Repositioned infer read idx to ", expected_idx+1, " from expected idx ", self.cur_readidx, time.time())
                 self.cur_readidx = expected_idx
