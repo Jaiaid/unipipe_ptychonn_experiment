@@ -88,7 +88,9 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
     # print("intialization time:", time.time() - interval_init_time)
 
     train_start_time = start_timestamp
-    last_consumption_time = start_timestamp
+    last_consumption_time = teststream.last_read_timestamp
+    forward_pass_arrival_time = start_timestamp
+    infer_count = 0
     # to control when the training of current interval will stop
     previous_loss = 0
     prev_val_loss = math.inf
@@ -132,7 +134,8 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
             if inferbs > 0 and total_consumed < len(teststream):
                 try:
                     infer_batch, consumed, missed, inferidxlist = teststream.read(
-                        bs=min(inferbs, len(teststream) - total_consumed), blocking_call=True
+                        bs=min(inferbs, len(teststream) - total_consumed),
+                        logger=logger
                     )
 
                     # if consumed != inferbs:
@@ -143,7 +146,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                         total_missed += missed
                         total_consumed += infer_count
                         logger.log("TEST STREAM READ SUCCESS", infer_count, missed, total_consumed, len(teststream))
-                        last_consumption_time = time.time()
+                        last_consumption_time =  teststream.last_read_timestamp
                     else:
                         stream_read_error_count += 1
                         logger.log("TEST STREAM READ FAILED", stream_read_error_count)
@@ -176,8 +179,12 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
             # or training is done now to pass only infer data to context
             # or no infer data is in pipeline for now, so only training
             
-            forward_pass_arrival_time = time.time()
-            logger.log("UNIPIPE READ LATENCY", forward_pass_arrival_time - iteration_start_time)
+            logger.log("INFER READ LATENCY", last_consumption_time - iteration_start_time, infer_count)
+
+            tmp_timestamp = time.time()
+            logger.log("INFER GAP", tmp_timestamp - forward_pass_arrival_time)                    
+            forward_pass_arrival_time = tmp_timestamp
+
 
             if infer_count > 0 and not stop_train:
                 ft_images = torch.concat((torch.tensor(infer_batch), torch.tensor(train_batch[0])), axis=0).to("cuda")

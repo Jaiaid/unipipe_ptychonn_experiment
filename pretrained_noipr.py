@@ -49,24 +49,26 @@ def pretrained_inferonly_process(
     
     iteration_start_time = start_timestamp
     last_consumption_time = start_timestamp
+    forward_pass_arrival_time = start_timestamp
     inference_iter_count = 0
     ipriteration_no = 0
 
     while time.time() - start_timestamp < time_limit and total_consumed < len(teststream):
+        infer_count = 0
         # measure how much in the queue based on time
         inferbs = min(
             ptychonn.parameters.INFERENCE_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
         )
         logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time, teststream.last_read_timestamp, teststream.cur_readidx, len(teststream))
-        inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
+        # inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
         # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
         #     pass
         # print(len(teststream)-total_consumed, inferbs)
         if inferbs > 0:
             try:
                 infer_batch, consumed, missed, inferidxlist = teststream.read(
-                    bs=min(inferbs, len(teststream) - total_consumed), logger=logger, blocking_call=True
+                    bs=min(inferbs, len(teststream) - total_consumed), logger=logger
                 )
 
                 if infer_batch is not None:
@@ -80,9 +82,12 @@ def pretrained_inferonly_process(
         if infer_count == 0:
             continue
 
-        last_consumption_time = time.time()
+        last_consumption_time =  teststream.last_read_timestamp
+        logger.log("INFER READ LATENCY", last_consumption_time - iteration_start_time, infer_count)
+
+        # measure the gap between two consecutive forward pass
+        logger.log("INFER GAP", last_consumption_time - forward_pass_arrival_time)
         forward_pass_arrival_time = last_consumption_time
-        logger.log("PRETRAINED NOIPR INFER READ LATENCY", last_consumption_time - iteration_start_time)
         # move the infer data to GPU
         ft_images = torch.tensor(infer_batch).to("cuda")
 
