@@ -36,6 +36,7 @@ import logfast.fastlogger
 
 # for checkpoint overhead experiment
 model_load_spenttime_list = []
+read_mismatch_count = 0
 
 
 def multicontext_inferonly_process(
@@ -44,6 +45,7 @@ def multicontext_inferonly_process(
         inferdatalist_fileobj, logger:logfast.fastlogger.FastLogger):
 
     logger.log("MULTICONTEXT BEGIN")
+    global read_mismatch_count
 
     # to store training related metrics
     total_consumed = 0
@@ -54,6 +56,8 @@ def multicontext_inferonly_process(
     
     iteration_start_time = start_timestamp
     last_consumption_time = start_timestamp
+    forward_pass_arrival_time = start_timestamp
+    infer_count = 0
     inference_iter_count = 0
     ipriteration_no = 0
 
@@ -64,6 +68,7 @@ def multicontext_inferonly_process(
 
     while time.time() - start_timestamp < time_limit and total_consumed < len(teststream):
         # measure how much in the queue based on time
+        infer_count = 0
         inferbs = min(
             ptychonn.parameters.INFERENCE_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
@@ -77,11 +82,14 @@ def multicontext_inferonly_process(
         if inferbs > 0:
             try:
                 infer_batch, consumed, missed, inferidxlist = teststream.read(
-                    bs=min(inferbs, len(teststream) - total_consumed), blocking_call=True
+                    bs=min(inferbs, len(teststream) - total_consumed),
+                    logger=logger
                 )
 
                 if infer_batch is not None:
                     infer_count = infer_batch.shape[0]
+                    if infer_count != inferbs:
+                        read_mismatch_count += abs(inferbs - infer_count)
                     total_missed += missed
                     total_consumed += infer_count
             except Exception as e:
@@ -91,9 +99,12 @@ def multicontext_inferonly_process(
         if infer_count == 0:
             continue
 
-        last_consumption_time = time.time()
+        last_consumption_time =  teststream.last_read_timestamp
+        logger.log("INFER READ LATENCY", last_consumption_time - iteration_start_time, infer_count)
+        # measure the gap between two consecutive forward pass
+        logger.log("INFER GAP", last_consumption_time - forward_pass_arrival_time)
         forward_pass_arrival_time = last_consumption_time
-        logger.log("MULTICONTEXT INFER READ LATENCY", last_consumption_time - iteration_start_time)
+
         # move the infer data to GPU
         ft_images = torch.tensor(infer_batch).to("cuda")
 
@@ -305,3 +316,4 @@ if __name__ == "__main__":
         )
 
     logger.persist(args.csvlog_file[:-4] + "_infer.log")
+    print("Read Mismatch Count", read_mismatch_count)
