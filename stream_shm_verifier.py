@@ -2,6 +2,7 @@ import argparse
 import os
 import time
 import ptychonn.parameters
+import ptychonn.ipc
 
 """
 This code verifies if the datastreamer shared memory based streaming shows the streamed and stale files 
@@ -53,11 +54,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # wait for some time to let the streamer start
-    while not os.path.exists("/dev/shm/{0}".format(ptychonn.parameters.SHM_MARKER_TRANSMIT_START)):
-        pass
-    with open("/dev/shm/{0}".format(ptychonn.parameters.SHM_MARKER_TIMESTAMP_SYNC), "r") as fd:
-        marker_content = fd.read()
-        start_time = float(marker_content)
+    start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
     
     # start_time = time.time() # + 0.00005  # adjust for small delay
     print(f"Detected streamer start marker at {start_time}, starting verification...")
