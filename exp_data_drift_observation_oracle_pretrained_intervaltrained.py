@@ -91,7 +91,7 @@ if __name__=="__main__":
                     optimizer.step()
                     scheduler.step()
 
-            print(f"Finished Training Interval {i//interval_length + 1}")
+            # print(f"Finished Training Interval {i//interval_length + 1}")
 
             intervaltrained_model.eval()
 
