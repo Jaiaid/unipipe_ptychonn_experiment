@@ -72,7 +72,7 @@ if __name__=="__main__":
                 step_size_up=step_size, cycle_momentum=False, mode='triangular2')
 
             for epoch in range(EPOCH):
-                for train_idx in (i, i+training_dataset_length, TRAIN_BS):
+                for train_idx in range(i, i+training_dataset_length, TRAIN_BS):
                     train_data = diffr_data[train_idx:min(diffr_data.shape[0], train_idx+TRAIN_BS)].reshape(min(diffr_data.shape[0]-train_idx, TRAIN_BS), 1, 64, 64)
                     target_amp = gt_data_amp[train_idx: min(train_idx+TRAIN_BS, gt_data_amp.shape[0])].reshape(min(diffr_data.shape[0]-train_idx, TRAIN_BS), 1, 64, 64)
                     target_ph = gt_data_phase[train_idx: min(train_idx+TRAIN_BS, gt_data_phase.shape[0])].reshape(min(diffr_data.shape[0]-train_idx, TRAIN_BS), 1, 64, 64)
@@ -90,7 +90,8 @@ if __name__=="__main__":
                     (loss_amp + loss_ph).backward()
                     optimizer.step()
                     scheduler.step()
-                    break
+
+            print(f"Finished Training Interval {i//interval_length + 1}")
 
             intervaltrained_model.eval()
 
