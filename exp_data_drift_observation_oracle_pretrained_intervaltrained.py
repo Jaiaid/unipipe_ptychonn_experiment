@@ -1,4 +1,5 @@
 import torch
+import math
 import numpy as np
 import matplotlib.pyplot as plot
 
@@ -10,11 +11,11 @@ from ptychonn import parameters
 PRETRAINED_MODELPATH = "pretrained_model/pretrained_bestmodel.pth"
 ORACLE_MODELPATH = "pretrained_model/oracle_model.pth"
 BS = 1
-TRAIN_BS = 32
+TRAIN_BS = 1
 
-INTERVAL_COUNT = 5
-TRAIN_FRACTION = 0.2
-EPOCH = 2
+INTERVAL_COUNT = 322#110
+TRAIN_FRACTION = 0.0158 # 0.0054
+EPOCH = 1
 
 
 if __name__=="__main__":
@@ -27,17 +28,19 @@ if __name__=="__main__":
 
     # we will take 10% at each interval begining for interval training
     total_data = diffr_data.shape[0]
-    interval_length = int(total_data/INTERVAL_COUNT)
-    training_dataset_length = int(interval_length*TRAIN_FRACTION)
+    interval_length = math.floor(total_data/INTERVAL_COUNT)
+    training_dataset_length = math.floor(interval_length*TRAIN_FRACTION)
+    # print(training_dataset_length, interval_length)
+    # exit()
 
     pretrained_model = model.recon_model()
     oracle_model = model.recon_model()
     intervaltrained_model = model.recon_model()
 
     # load the model
-    pretrained_model = torch.load(PRETRAINED_MODELPATH, weights_only=False)
-    oracle_model.load_state_dict(torch.load(ORACLE_MODELPATH, weights_only=False))
-    intervaltrained_model = torch.load(PRETRAINED_MODELPATH, weights_only=False)
+    pretrained_model.load_state_dict(torch.load(PRETRAINED_MODELPATH, weights_only=True))
+    oracle_model.load_state_dict(torch.load(ORACLE_MODELPATH, weights_only=True))
+    intervaltrained_model.load_state_dict(torch.load(PRETRAINED_MODELPATH, weights_only=True))
     # to gpu
     pretrained_model = pretrained_model.to("cuda")
     oracle_model = oracle_model.to("cuda")
@@ -86,7 +89,8 @@ if __name__=="__main__":
                     optimizer.zero_grad()
                     (loss_amp + loss_ph).backward()
                     optimizer.step()
-                    scheduler.step()            
+                    scheduler.step()
+                    break
 
             intervaltrained_model.eval()
 
