@@ -35,6 +35,9 @@ if __name__ == "__main__":
     results = {param: [] for param in DATARATE_LIST}
     fluctuations = {param: [] for param in DATARATE_LIST}
 
+    # infer bs detection state
+    infer_bs_regex_match_state = True
+
     # Read values and compute means
     for param in DATARATE_LIST:
         for sys in SYSTEM_NAME_LIST:
@@ -47,10 +50,17 @@ if __name__ == "__main__":
             with open(log_path, 'r') as f:
                 gap_values = []
                 for line in f.readlines():
-                    match = re.search(r'BACKWARD TAKES\(sec.\),([\d.eE+-]+)', line)
+                    if infer_bs_regex_match_state:
+                        match = re.search(r'INFER READ LATENCY,([\d.eE+-]+),(\d+)', line)
+                        if match:
+                            batch_size = int(match.group(2))
+                            infer_bs_regex_match_state = False
+
+                    match = re.search(r'ITERATION TAKES\(sec.\),([\d.eE+-]+)', line)
                     if match:
                         gap_value = float(match.group(1))
-                        gap_values.append(gap_value)
+                        gap_values.append(batch_size / gap_value)
+                        infer_bs_regex_match_state = True
 
                 if gap_values:
                     avg_gap = np.mean(gap_values)
@@ -77,7 +87,7 @@ if __name__ == "__main__":
         ax.bar(x + i * bar_width, sys_values, yerr=sys_error, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
     
     ax.set_xlabel('Data Rate (req/s)')
-    ax.set_ylabel('Avg. Backward Pass Latency (s)')
+    ax.set_ylabel('Avg. Inference Thpt. (req/s)')
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
     ax.set_xticklabels([str(param) for param in DATARATE_LIST])
     ax.legend()

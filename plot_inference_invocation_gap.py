@@ -23,7 +23,7 @@ from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
-DATARATE_LIST = [1000, 2000, 3000]
+DATARATE_LIST = [1000, 2000, 3000, 4000, 5000]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -55,10 +55,10 @@ if __name__ == "__main__":
                 if gap_values:
                     avg_gap = np.mean(gap_values)
                     fluctuation = np.std(gap_values)
-                    fluctuations[param].append(fluctuation)
+                    fluctuations[param].append((avg_gap-np.min(gap_values), np.max(gap_values)-avg_gap))
                     results[param].append(avg_gap)
                 else:
-                    fluctuations[param].append(0)
+                    fluctuations[param].append((0, 0))
                     results[param].append(0)  # or handle missing data appropriately
 
     # Plotting
@@ -73,7 +73,8 @@ if __name__ == "__main__":
     for i, sys in enumerate(SYSTEM_NAME_LIST):
         sys_values = [results[param][i] for param in DATARATE_LIST]
         sys_fluctuations = [fluctuations[param][i] for param in DATARATE_LIST]
-        ax.bar(x + i * bar_width, sys_values, yerr=sys_fluctuations, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
+        sys_error = np.array([[low, high] for low, high in sys_fluctuations]).T
+        ax.bar(x + i * bar_width, sys_values, yerr=sys_error, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
     
     ax.set_xlabel('Data Rate (req/s)')
     ax.set_ylabel('Avg. Invocation Gap (s)')
