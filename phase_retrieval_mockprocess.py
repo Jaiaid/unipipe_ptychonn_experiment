@@ -96,9 +96,9 @@ if __name__=="__main__":
             deadline_sec=deadline_sec)
 
     if not args.unipipedp_scheduler:
-        skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
+        skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate)) + 1
     else:
-        skip_data_idx = math.ceil(time_stretch_continuous_data_process * args.acquisition_rate) - args.gtcount
+        skip_data_idx = math.floor(time_stretch_continuous_data_process * args.acquisition_rate) - args.gtcount
 
     print(time_stretch_continuous_data_process, skip_data_idx)
 
@@ -120,14 +120,31 @@ if __name__=="__main__":
         time.sleep(1/args.acquisition_rate)
 
     while current_timestamp - start_timestamp < total_streamtime:
+        if args.unipipedp_scheduler:
+            current_interval_start_timestamp = start_timestamp + (current_generate_idx + 1) / args.acquisition_rate # cur_ipriteration * time_stretch_continuous_data_process + args.gtcount/args.acquisition_rate
+        else:
+            current_interval_start_timestamp = start_timestamp + (current_generate_idx + 1) / args.acquisition_rate # start_timestamp + cur_ipriteration * time_stretch_continuous_data_process + 1/args.acquisition_rate
+        
+        # if current_interval_start_timestamp < start_timestamp+4:
+        #     print(current_interval_start_timestamp, current_interval_start_timestamp - start_timestamp)
+
+        while time.time() < current_interval_start_timestamp:
+            pass
+
         cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
         ipc.create_shm_folder(cur_folder)
 
-        if args.unipipedp_scheduler:
-            current_interval_start_timestamp = start_timestamp + cur_ipriteration * time_stretch_continuous_data_process + args.gtcount/args.acquisition_rate
-        else:
-            current_interval_start_timestamp = start_timestamp + cur_ipriteration * time_stretch_continuous_data_process + 1/args.acquisition_rate
-        
+        ipc.create_shm_marker(
+            os.path.join(cur_folder, "{0}.tscreate".format(
+                (time.time()-start_timestamp)*args.acquisition_rate)
+            )
+        )
+        # ipc.create_shm_marker(
+        #     os.path.join(cur_folder, "{0}.tsstart".format(
+        #         (current_interval_start_timestamp-start_timestamp)*args.acquisition_rate)
+        #     )
+        # )
+
         current_timestamp = current_interval_start_timestamp
         data_process_interval_start_timestamp = current_interval_start_timestamp
         generation_count_in_interval = 0
@@ -140,13 +157,14 @@ if __name__=="__main__":
                     cur_folder
                 )
             except FileNotFoundError as e:
+                # print(current_generate_idx, " not found at ", time.time())
                 current_timestamp = time.time()
                 total_missed += 1
                 continue
-
+            # print("current generate idx:", current_generate_idx, " at ", time.time())
             # time gap to wait for the generation
             # it will be a busy loop
-            while current_timestamp - data_process_interval_start_timestamp < 1/args.generation_rate:
+            while current_timestamp - data_process_interval_start_timestamp < 0.667/args.generation_rate:
                 current_timestamp = time.time()
 
             # create the data in shared memory space /dev/shm
@@ -156,6 +174,11 @@ if __name__=="__main__":
             ipc.create_shm_data(
                 os.path.join(cur_folder, parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(current_generate_idx)),
                 gt_data_ph[current_generate_idx])
+            ipc.create_shm_marker(
+                os.path.join(cur_folder, "{0}.ts".format(
+                    (time.time()-start_timestamp)*args.acquisition_rate)
+                )
+            )
             total_generated += 1
             generation_count_in_interval += 1
 
@@ -168,7 +191,7 @@ if __name__=="__main__":
         cur_ipriteration += 1
 
         # print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
-        current_generate_idx += skip_data_idx
+        current_generate_idx = (skip_data_idx+1)*cur_ipriteration
 
     print("==================================IPR Mock Status=================================")
     print("Data rate: {0}Hz".format(args.acquisition_rate))
