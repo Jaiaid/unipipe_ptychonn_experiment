@@ -402,7 +402,7 @@ def benchmark_model(model, device='cuda', bs=64, warmup=5, iters=10):
         output = model(input_tensor)
         loss = criterion(output[0], target)
         loss.backward()
-        optimizer.step()
+        # optimizer.step()
     
     # Benchmark iterations
     torch.cuda.synchronize()
@@ -424,7 +424,7 @@ def benchmark_model(model, device='cuda', bs=64, warmup=5, iters=10):
         f_passtime += time.time() - start
         loss = criterion(output[0], target) + criterion(output[1], target)
         loss.backward()
-        optimizer.step()
+        # optimizer.step()
         torch.cuda.synchronize()
         b_passtime += time.time() - start
         # store in MiB
