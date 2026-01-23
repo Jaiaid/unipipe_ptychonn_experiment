@@ -96,6 +96,15 @@ if __name__=="__main__":
             while next_delete_idx < len(deadline_time_list) and deadline_time_list[next_delete_idx] < current_timestamp:
                 try:
                     ipc.move_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx), parameters.SHM_MARKER_STALE_FOLDER)
+                    ipc.create_shm_marker(
+                        os.path.join(
+                            parameters.SHM_MARKER_STALE_FOLDER,
+                            "{0}_{1}.ts".format(
+                                parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx), 
+                                (time.time() - start_timestamp)*args.rate
+                            )
+                        )
+                    )
                     missed += 1
                     if next_delete_idx > total_image_count/5:
                         missed_nonpretrained += 1
@@ -117,7 +126,7 @@ if __name__=="__main__":
 
             # we assume deadline >> interval between two data samples
             # therefore, waiting for new data to arrive will not cause deadline to be over significantly
-            while current_timestamp - data_interval_start_timestamp < 1/args.rate:# - 0.0000011:
+            while current_timestamp - data_interval_start_timestamp < 1/args.rate - 0.001:
                 busyloop_iteration_count += 1
 
                 current_timestamp = time.time()
