@@ -35,6 +35,10 @@ if __name__ == "__main__":
     results = {param: [] for param in DATARATE_LIST}
     fluctuations = {param: [] for param in DATARATE_LIST}
 
+    total_consumed_results = {param: [] for param in DATARATE_LIST}
+    start_timestamp = None
+    end_timestamp = None
+
     # infer bs detection state
     infer_bs_regex_match_state = True
 
@@ -43,10 +47,13 @@ if __name__ == "__main__":
         for sys in SYSTEM_NAME_LIST:
             # for log file multicontext is named differently
             if sys == "multicontext":
-                log_path = os.path.join(args.dir, sys, CSV_FILENAME_FMT.format(sys, DEADLINE_LIST[0], param, IPR_RATE_LIST[0]).replace('.csv', '_train.log'))
+                log_path = os.path.join(args.dir, sys, CSV_FILENAME_FMT.format(sys, DEADLINE_LIST[0], param, IPR_RATE_LIST[0]).replace('.csv', '_infer.log'))
             else:
                 log_path = os.path.join(args.dir, sys, CSV_FILENAME_FMT.format(sys, DEADLINE_LIST[0], param, IPR_RATE_LIST[0]).replace('.csv', '.log'))
 
+            total_consumed = 0
+            start_timestamp = None
+            end_timestamp = None
             with open(log_path, 'r') as f:
                 gap_values = []
                 for line in f.readlines():
@@ -62,6 +69,29 @@ if __name__ == "__main__":
                         gap_values.append(batch_size / gap_value)
                         infer_bs_regex_match_state = True
 
+                    if start_timestamp is None:
+                        if sys == "unipipe_dp":
+                            match = re.search(r'\[(\d+\.\d+)\] UNIPIPE DP ITERATION START,0', line)
+                        elif sys == "pretrained":
+                            match = re.search(r'\[(\d+\.\d+)\] PRETRAINED CONSUMPTION START,(\d+\.\d+)', line)
+                        elif sys == "pretrained_noipr":
+                            match = re.search(r'\[(\d+\.\d+)\] PRETRAINED NOIPR CONSUMPTION START,(\d+\.\d+)', line)
+                        else:
+                            match = re.search(r'\[(\d+\.\d+)\] IPR ITERATION START,0', line)
+                        
+                        if match:
+                            start_timestamp = float(match.group(1))
+                            # print(f"Detected start timestamp: {start_timestamp}")
+
+                    if sys == "unipipe_dp" or sys == "unipipe":
+                        match = re.search(r'\[(\d+\.\d+)\] TOTAL CONSUMED,MISSED,(\d+),(\d+)', line)
+                    else:
+                        match = re.search(r'\[(\d+\.\d+)\] TOTAL CONSUMED,(\d+)', line)
+                    if match:
+                        end_timestamp = float(match.group(1))
+                        total_consumed += int(match.group(2))
+                        # print(f"Updated end timestamp: {end_timestamp}, total consumed: {total_consumed}")
+
                 if gap_values:
                     avg_gap = np.mean(gap_values)
                     fluctuation = np.std(gap_values)
@@ -70,6 +100,9 @@ if __name__ == "__main__":
                 else:
                     fluctuations[param].append((0, 0))
                     results[param].append(0)  # or handle missing data appropriately
+
+                total_consumed_results[param].append(total_consumed/(end_timestamp-start_timestamp))
+                # print(sys, param, end_timestamp-start_timestamp, total_consumed, total_consumed/(end_timestamp-start_timestamp))
 
     # Plotting
     num_params = len(DATARATE_LIST)
@@ -92,6 +125,23 @@ if __name__ == "__main__":
     ax.set_xticklabels([str(param) for param in DATARATE_LIST])
     ax.legend()
     
-    output_path = f"{args.output_file_basename}.png"
+    output_path = f"{args.output_file_basename}_iterlevel.png"
+    fig.savefig(output_path, dpi=600, bbox_inches="tight")
+
+    fig, ax = plt.subplots(figsize=(4, 2.25))
+    
+    # plot bars and error bars
+    for i, sys in enumerate(SYSTEM_NAME_LIST):
+        sys_values = [total_consumed_results[param][i] for param in DATARATE_LIST]
+        # print(sys, sys_values)
+        ax.bar(x + i * bar_width, sys_values, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
+    
+    ax.set_xlabel('Data Rate (req/s)')
+    ax.set_ylabel('Avg. Inference Thpt. (req/s)')
+    ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
+    ax.set_xticklabels([str(param) for param in DATARATE_LIST])
+    ax.legend()
+    
+    output_path = f"{args.output_file_basename}_global.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
 
