@@ -23,7 +23,7 @@ from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
-DATARATE_LIST = [1000, 2000, 3000]
+DATARATE_LIST = [1000, 2000, 3000, 4000, 5000]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -50,7 +50,7 @@ if __name__ == "__main__":
                 gap_values = []
                 batch_sizes = []
                 for line in f.readlines():
-                    match = re.search(r'INFER READ LATENCY,([\d.eE+-]+),(\d+)', line)
+                    match = re.search(r'BLOCKING CALL WAITED FOR AVAILABLE BS,([\d.eE+-]+),(\d+)', line)
                     if match:
                         # to fix for mistakes which caused negative of actual values to be calculated
                         gap_value = abs(float(match.group(1)))
@@ -99,21 +99,4 @@ if __name__ == "__main__":
     output_path = f"{args.output_file_basename}_sw.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
 
-
-    # bs plot
-    fig, ax = plt.subplots(figsize=(4, 2.25))
-    
-    for i, sys in enumerate(SYSTEM_NAME_LIST):
-        sys_values = [results_bs[param][i] for param in DATARATE_LIST]
-        sys_fluctuations = [fluctuations_bs[param][i] for param in DATARATE_LIST]
-        ax.bar(x + i * bar_width, sys_values, yerr=sys_fluctuations, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
-    
-    ax.set_xlabel('Data Rate (req/s)')
-    ax.set_ylabel('Avg. Batch Size (requests)')
-    ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([str(param) for param in DATARATE_LIST])
-    ax.legend()
-    
-    output_path = f"{args.output_file_basename}_bs.png"
-    fig.savefig(output_path, dpi=600, bbox_inches="tight")
 
