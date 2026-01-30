@@ -1,3 +1,4 @@
+import argparse
 import copy
 import random
 import torch
@@ -10,10 +11,10 @@ from tqdm import tqdm
 from nvitop import Device, ResourceMetricCollector
 
 
-BATCH_SIZES = list(range(1, 129)) # [256, 128, 64, 32, 16, 8, 4, 2, 1]
+BATCH_SIZES = list(range(1, 65)) # [256, 128, 64, 32, 16, 8, 4, 2, 1]
 LEARNING_RATE = 0.001
 IMAGECOUNT_PER_RUN = 204800000 # 2048
-ITERATION_COUNT_PER_RUN = 220 # 10000000
+ITERATION_COUNT_PER_RUN = 80 # 10000000
 WARMUP_ITERATION = 20
 
 DEVTYPE_GPU = 1
@@ -248,6 +249,13 @@ def training_all_param_update(nn_model: torch.nn.Module, dataloader: torch.utils
 
 
 if __name__ == "__main__":
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", required=True)
+    args = arg_parser.parse_args()
+
+    model_type = args.model_type
+    model_name = model.get_model_name_from_type(model_type)
+
     benchmark_dict = {}
     gpu_utilization_dict = {}
 
@@ -266,7 +274,7 @@ if __name__ == "__main__":
         
         dataloader = torch.utils.data.DataLoader(dataset=tensor_dataset, batch_size=batch_size)
         # model
-        nn_model = model.recon_model()
+        nn_model = model.get_model(type_name=model_type)
         # nn_model.fc = torch.nn.Linear(512, NUMBER_OF_CLASSES)
         
         evalfw, evalfw_per_samp, fw, fw_per_samp, bw, bw_per_samp, inferdataload_per_sample, traindata_load_per_sample  = training_all_param_update(
@@ -276,7 +284,7 @@ if __name__ == "__main__":
         benchmark_dict[batch_size] = [evalfw, evalfw_per_samp, fw, fw_per_samp, bw, bw_per_samp, inferdataload_per_sample, traindata_load_per_sample]
         gpu_utilization_dict[batch_size] = copy.deepcopy(gpu_utilization_list)
 
-    with open("benchmark_ptychonn_nn_step.csv", "w") as fout:
+    with open("benchmark_{0}_nn_step.csv".format(model_name), "w") as fout:
         fout.write("Batch Size\tInference\tInference Per Sample\tForward\tForward Per Sample\tBackward\tBackward Per Sample\tInfer Data Load\tTrain data load\n")
         for batch_size in BATCH_SIZES:
             data_list = benchmark_dict[batch_size]
@@ -285,7 +293,7 @@ if __name__ == "__main__":
                 )
             )
 
-    with open("benchmark_ptychonn_gpu_utilization.csv", "w") as fout:
+    with open("benchmark_{0}_gpu_utilization.csv".format(model_name), "w") as fout:
             for batch_size in BATCH_SIZES:
                 fout.write("{0}\t{0}\t{0}\t".format(batch_size))
             fout.write("\n")
