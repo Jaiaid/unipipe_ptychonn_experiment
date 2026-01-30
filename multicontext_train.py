@@ -96,7 +96,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
 
 
         while time_limit is not None and time.time() - start_time < time_limit and epoch_consumed < len(trainloader):
-            logger.log("MULTICONTEXT TRAIN ITERATION START", total_iter_count, trainbs, len(trainloader) - epoch_consumed, len(trainloader))
+            # logger.log("MULTICONTEXT TRAIN ITERATION START", total_iter_count, trainbs, len(trainloader) - epoch_consumed, len(trainloader))
             iteration_start_time = time.time()
             
             train_batch = trainloader.read(bs=min(trainbs, len(trainloader) - epoch_consumed))
@@ -251,6 +251,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
     arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
+    arg_parser.add_argument("--gtcount", "-gtcount", type=int, required=False, help="how many ground truth will be consumed by phase retrieval process", default=1)
     
     # get the arguments
     args = arg_parser.parse_args()
@@ -266,7 +267,7 @@ if __name__ == "__main__":
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-            model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+            model.load_state_dict(torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=True))
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
@@ -330,7 +331,7 @@ if __name__ == "__main__":
     ptychonn.ipc.signal_producer_from_ML_surrogate()
     # wait to synchronize time calculation with produce process
     start_time, total_runtime = ptychonn.ipc.producer_transmit_wait()
-    logger.log("multicontext train consumption start ", start_time)
+    logger.log("MULTICONTEXT TRAIN CONSUMPTION START", start_time)
     current_time = start_time
     cur_interval_start_time = current_time
 
@@ -365,8 +366,10 @@ if __name__ == "__main__":
             
             trainsize = int(math.floor(ipriter_time_limit * args.ipr_throughput))
             infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
-            train_readidx_curpos = (cur_ipriteration-1)*(trainsize + infersize)
+            train_readidx_curpos = cur_ipriteration*(trainsize + infersize)
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
+
+            logger.log("TRAIN DATAREADER STATUS", train_readidx_curpos, trainsize, train_datareader.cur_ipriteration)
 
             train_datareader.set_len(begin=train_readidx_curpos, end=train_readidx_curpos+trainsize-1)
             epoch_count = ptychonn.parameters.EPOCHS
@@ -394,8 +397,8 @@ if __name__ == "__main__":
             cur_ipriteration, epoch_count, ipriter_time_limit, time.time() - ipr_training_time_start)
 
         # busy wait until time is passed
-        # while time.time() - unipipe_time_start < unipipe_time_limit:
-        #     pass
+        while time.time() - ipr_training_time_start < ipriter_time_limit:
+            pass
 
     traindatalist_file.close()
 

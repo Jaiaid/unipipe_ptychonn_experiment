@@ -33,6 +33,8 @@ import ptychonn.shm_datareader
 import logfast.fastlogger
 
 
+global MAX_INFER_BATCH_SIZE
+
 def pretrained_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
         datarate:float, start_timestamp:float, time_limit:float,
@@ -57,18 +59,19 @@ def pretrained_inferonly_process(
         infer_count = 0
         # measure how much in the queue based on time
         inferbs = min(
-            ptychonn.parameters.INFERENCE_BATCH_SIZE, 
+            MAX_INFER_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
         )
+
         logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time, teststream.last_read_timestamp, teststream.cur_readidx, len(teststream))
-        # inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
+        # inferbs = MAX_INFER_BATCH_SIZE
         # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
         #     pass
         # print(len(teststream)-total_consumed, inferbs)
         if inferbs > 0:
             try:
                 infer_batch, consumed, missed, inferidxlist = teststream.read(
-                    bs=min(inferbs, len(teststream) - total_consumed), logger=logger
+                    bs=min(inferbs, len(teststream) - total_consumed), logger=logger, blocking_call=True
                 )
 
                 if infer_batch is not None:
@@ -83,14 +86,23 @@ def pretrained_inferonly_process(
             continue
 
         last_consumption_time =  teststream.last_read_timestamp
-        logger.log("INFER READ LATENCY", last_consumption_time - iteration_start_time, infer_count)
+        logger.log("INFER READ LATENCY", time.time() - iteration_start_time, infer_count)
 
         # measure the gap between two consecutive forward pass
-        logger.log("INFER GAP", last_consumption_time - forward_pass_arrival_time)
-        forward_pass_arrival_time = last_consumption_time
+        logger.log("INFER GAP", time.time() - forward_pass_arrival_time)
+        forward_pass_arrival_time = time.time()
         # move the infer data to GPU
         ft_images = torch.tensor(infer_batch).to("cuda")
 
+        # random.seed(ptychonn.parameters.SEED)
+        # torch.manual_seed(ptychonn.parameters.SEED)
+        # torch.cuda.manual_seed(ptychonn.parameters.SEED)
+        # torch.cuda.manual_seed_all(ptychonn.parameters.SEED)
+        # np.random.seed(ptychonn.parameters.SEED)
+        # torch.backends.cudnn.deterministic = True
+        # torch.backends.cudnn.benchmark = False
+        # torch.use_deterministic_algorithms(True)
+        # ft_images = torch.zeros_like(ft_images).to("cuda")
         logger.log("PRETRAINED NOIPR INFER BS", infer_count)
         # to keep track how many infer request missed due to forward pass latency
         pred_amps, pred_phs = model(ft_images) #Forward pass
@@ -99,7 +111,6 @@ def pretrained_inferonly_process(
         if infer_count > 0:
             pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
             pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
-            # print(pred_amps.shape, pred_phs.shape)
             for i in range(infer_count):
                 inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
                 ptychonn.ipc.create_shm_data(
@@ -117,6 +128,10 @@ def pretrained_inferonly_process(
                     pred_amps_cpu_np[i]
                 )
 
+                # print(torch.mean(pred_amps[i]), torch.mean(pred_phs[i]), np.mean(pred_amps_cpu_np[i]), np.mean(pred_ph_cpu_np[i]))
+                # print(torch.mean(ft_images[i]))
+                # exit()
+
         # update total missed count
         logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
         total_iter_count += 1
@@ -124,7 +139,7 @@ def pretrained_inferonly_process(
         # while ptychonn.parameters.INFERENCE_BATCH_SIZE/datarate > time.time() - iteration_start_time:
         #     pass
         tmp = time.time()
-        logger.log("ITERATION TIME", tmp - iteration_start_time)
+        logger.log("ITERATION TAKES(sec.)", tmp - iteration_start_time)
         iteration_start_time = tmp
 
     if total_consumed >= len(infer_datareader):
@@ -163,23 +178,31 @@ if __name__ == "__main__":
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
     arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
+    arg_parser.add_argument("--gtcount", "-gtcount", type=int, required=False, help="how many ground truth will be consumed by phase retrieval process", default=1)
+    arg_parser.add_argument("--maxinfer-bs", "-maxinferbs", type=int, default=None,  help="what is the max infer batch size to use, if not set use perf model to decide")
     
     # get the arguments
     args = arg_parser.parse_args()
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    # GPU environment is assumend
-    model.to("cuda")
-
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-            model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+            model.load_state_dict(torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=True))
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
+    # all_params = torch.cat([param.view(-1) for param in model.parameters()])
 
+    # # 2. Take the mean
+    # mean_val = np.mean(all_params.cpu().detach().numpy())
+    # print(mean_val)
+    # exit()
+    # GPU environment is assumend
+    model = model.to("cuda")
+    model.eval()
+    
     _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
 
     # initiate the logger
@@ -206,6 +229,28 @@ if __name__ == "__main__":
     
     # training state controller variable initiation
     deadline_sec = args.deadline / 1000
+
+    forward_time_per_sample = []
+    backward_time_per_sample = []
+    # read profile data to get
+    with open("ptychonn/benchmark_ptychonn_nn_step.csv") as f:
+        for line in f.readlines()[1:]:
+            tokens = line.split()
+            bs = int(tokens[0])
+            fwd_time_per_sample = float(tokens[4])
+            bwd_time_per_sample = float(tokens[6])
+            forward_time_per_sample.append(fwd_time_per_sample)
+            backward_time_per_sample.append(bwd_time_per_sample)
+
+    global MAX_INFER_BATCH_SIZE
+    if args.maxinfer_bs is not None:
+        MAX_INFER_BATCH_SIZE = args.maxinfer_bs
+        logger.log("SET MAXBS", MAX_INFER_BATCH_SIZE)
+    else:
+        MAX_INFER_BATCH_SIZE = ptychonn.perf_model.SystemTuner.calc_deadline_aware_maxthpt_bs(
+            forward_time_per_sample, deadline_sec, args.datarate
+        )
+        logger.log("TUNED MAXBS", MAX_INFER_BATCH_SIZE)
 
     if args.large_dataset:
         total_runtime = args.interval_count * args.interval_duration

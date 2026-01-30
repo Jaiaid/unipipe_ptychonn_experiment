@@ -38,13 +38,15 @@ import logfast.fastlogger
 model_load_spenttime_list = []
 read_mismatch_count = 0
 
+global MAX_INFER_BATCH_SIZE
+
 
 def multicontext_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
         datarate:float, start_timestamp:float, time_limit:float, cur_ipriteration:int,
         inferdatalist_fileobj, logger:logfast.fastlogger.FastLogger):
 
-    logger.log("MULTICONTEXT BEGIN")
+    logger.log("MULTICONTEXT INFER BEGIN")
     global read_mismatch_count
 
     # to store training related metrics
@@ -55,35 +57,55 @@ def multicontext_inferonly_process(
     metrics = {}
     
     iteration_start_time = start_timestamp
-    last_consumption_time = start_timestamp
+    last_consumption_time = teststream.last_read_timestamp
     forward_pass_arrival_time = start_timestamp
     infer_count = 0
     inference_iter_count = 0
     ipriteration_no = 0
 
     # which directory to load model from at the beginning
-    chkpt_dir = multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration)
+    chkpt_dir = multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(max(cur_ipriteration-1, 0))
     # what will be the next model to load
     next_model = 0
+
+    logger.log("LOOKING FOR MODEL IN", os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
+    if ptychonn.ipc.exist_shm(
+        os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model))):
+
+        logger.log("MODEL UPDATE TO", chkpt_dir, next_model)
+        # print("inference process is swapping model, ", os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
+        model_load_time = time.time()
+        model = torch.load(
+            os.path.join(
+                "/dev/shm",
+                chkpt_dir,
+                multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
+            ), weights_only=False
+        )
+        model.to("cuda")
+        taken_time = time.time() - model_load_time
+        logger.log("MODEL LOAD TAKES", taken_time)
+        model_load_spenttime_list.append(taken_time)
+        next_model += 1
 
     while time.time() - start_timestamp < time_limit and total_consumed < len(teststream):
         # measure how much in the queue based on time
         infer_count = 0
         inferbs = min(
-            ptychonn.parameters.INFERENCE_BATCH_SIZE, 
+            MAX_INFER_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
         )
-        logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time)
         # print(inferbs, total_consumed, len(teststream))
-        # inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
+        # inferbs = MAX_INFER_BATCH_SIZE
         # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
         #     pass
         # print(len(teststream)-total_consumed, inferbs)
         if inferbs > 0:
+            logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time, datarate * (time.time() - last_consumption_time))
             try:
                 infer_batch, consumed, missed, inferidxlist = teststream.read(
                     bs=min(inferbs, len(teststream) - total_consumed),
-                    logger=logger
+                    logger=logger, blocking_call=True
                 )
 
                 if infer_batch is not None:
@@ -92,6 +114,9 @@ def multicontext_inferonly_process(
                         read_mismatch_count += abs(inferbs - infer_count)
                     total_missed += missed
                     total_consumed += infer_count
+
+                    last_consumption_time =  teststream.last_read_timestamp
+                    logger.log("INFER READ LATENCY", time.time() - iteration_start_time, infer_count)
             except Exception as e:
                 print(e)
                 continue
@@ -99,11 +124,9 @@ def multicontext_inferonly_process(
         if infer_count == 0:
             continue
 
-        last_consumption_time =  teststream.last_read_timestamp
-        logger.log("INFER READ LATENCY", last_consumption_time - iteration_start_time, infer_count)
         # measure the gap between two consecutive forward pass
-        logger.log("INFER GAP", last_consumption_time - forward_pass_arrival_time)
-        forward_pass_arrival_time = last_consumption_time
+        logger.log("INFER GAP", time.time() - forward_pass_arrival_time)
+        forward_pass_arrival_time = time.time()
 
         # move the infer data to GPU
         ft_images = torch.tensor(infer_batch).to("cuda")
@@ -140,23 +163,25 @@ def multicontext_inferonly_process(
         # busy wait to ensure enough data accumulated
         # while ptychonn.parameters.INFERENCE_BATCH_SIZE/datarate > time.time() - iteration_start_time:
         #     pass
-        model_load_time = time.time()
         
-        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
-            cur_ipriteration += 1
-            next_model = 0
-            logger.log("MULTICONTEXT IPR ITERATION INCREMENT TO", cur_ipriteration)
-            chkpt_dir = multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration)
+        # if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
+        #     cur_ipriteration += 1
+        #     next_model = 0
+        #     logger.log("MULTICONTEXT IPR ITERATION INCREMENT TO", cur_ipriteration)
+        #     chkpt_dir = multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration)
         
+        logger.log("LOOKING FOR MODEL IN", os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
         if ptychonn.ipc.exist_shm(
             os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model))):
-            cur_model_dir = os.path.join("/dev/shm", chkpt_dir)
 
             logger.log("MODEL UPDATE TO", chkpt_dir, next_model)
-            # print("inference process is swapping model, ", os.path.join(cur_model_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
+            
+            model_load_time = time.time()
+            # print("inference process is swapping model, ", os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
             model = torch.load(
                 os.path.join(
-                    cur_model_dir,
+                    "/dev/shm",
+                    chkpt_dir,
                     multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
                 ), weights_only=False
             )
@@ -167,7 +192,7 @@ def multicontext_inferonly_process(
             next_model += 1
 
         tmp = time.time()
-        logger.log("ITERATION TIME", tmp - iteration_start_time)
+        logger.log("ITERATION TAKES(sec.)", tmp - iteration_start_time)
         iteration_start_time = tmp
 
     if total_consumed >= len(infer_datareader):
@@ -206,6 +231,8 @@ if __name__ == "__main__":
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
     arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
     arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
+    arg_parser.add_argument("--gtcount", "-gtcount", type=int, required=False, help="how many ground truth will be consumed by phase retrieval process", default=1)
+    arg_parser.add_argument("--maxinfer-bs", "-maxinferbs", type=int, default=None,  help="what is the max infer batch size to use, if not set use perf model to decide")
     
     # get the arguments
     args = arg_parser.parse_args()
@@ -218,7 +245,7 @@ if __name__ == "__main__":
     # other variants are just for performance test
     if args.model_type == "1.25M":
         if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-            model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+            model.load_state_dict(torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=True))
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
@@ -250,6 +277,37 @@ if __name__ == "__main__":
     # training state controller variable initiation
     deadline_sec = args.deadline / 1000
 
+    forward_time_per_sample = []
+    backward_time_per_sample = []
+    # read profile data to get
+    with open("ptychonn/benchmark_ptychonn_nn_step.csv") as f:
+        for line in f.readlines()[1:]:
+            tokens = line.split()
+            bs = int(tokens[0])
+            fwd_time_per_sample = float(tokens[4])
+            bwd_time_per_sample = float(tokens[6])
+            forward_time_per_sample.append(fwd_time_per_sample)
+            backward_time_per_sample.append(bwd_time_per_sample)
+
+    global MAX_INFER_BATCH_SIZE
+    if args.maxinfer_bs is not None:
+        MAX_INFER_BATCH_SIZE = args.maxinfer_bs
+        logger.log("SET MAXBS", MAX_INFER_BATCH_SIZE)
+    else:
+        MAX_INFER_BATCH_SIZE = ptychonn.perf_model.SystemTuner.calc_deadline_aware_maxthpt_bs(
+            forward_time_per_sample, deadline_sec, args.datarate
+        )
+        logger.log("TUNED MAXBS", MAX_INFER_BATCH_SIZE)
+
+    # estimate ipriteration time limit from perf. model
+    # for coordination with ground truth data generation
+    # although we are not training here, to make things fair with unipipe
+    # we have to generate some ground truth data
+    ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+        phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
+        acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+    )
+
     if args.large_dataset:
         total_runtime = args.interval_count * args.interval_duration
     else:
@@ -271,27 +329,44 @@ if __name__ == "__main__":
     # will start with 0 as no iteration is finished at the beginning
     cur_ipriteration = 0
 
-    logger.log("MULTICONTEXT CONSUMPTION START", start_timestamp)
-    
+    logger.log("MULTICONTEXT INFER CONSUMPTION START", start_timestamp)
+
     while current_time - start_timestamp < total_runtime:
+        ipr_iter_time_start = time.time()
         infer_datareader.cur_readidx = total_consumed
         # set the reader length for the unipipe call
         # to handle initial boundary condition
         infer_datareader.set_len(infersize - total_consumed)
         # for inference location on datastream repositioning
-        logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize)
         
+        logger.log("IPR ITERATION START", cur_ipriteration)
+
+        trainsize = int(math.floor(ipriter_time_limit * args.ipr_throughput))
+        infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
+        train_readidx_curpos = cur_ipriteration*(trainsize + infersize)
+        infer_readidx_curpos = cur_ipriteration*(trainsize + infersize) + trainsize
+        infer_datareader.set_len(infersize)
+        infer_datareader.set_curreadidx(infer_readidx_curpos)
+
+        logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize)
         # put unipipe traininfer for one ipriteration data here
         metrics, consumed = multicontext_inferonly_process(
             model, infer_datareader, cur_ipriteration=cur_ipriteration,
-            inferdatalist_fileobj=inferdatalist_file, start_timestamp=start_timestamp,
-            logger=logger, datarate=args.datarate, time_limit=total_runtime)
-        
+            inferdatalist_fileobj=inferdatalist_file, start_timestamp=ipr_iter_time_start,
+            logger=logger, datarate=args.datarate, time_limit=ipriter_time_limit)
+
         # log how much ipr iteration matches with unipipe iteration
 
         current_time = time.time()
         total_consumed += consumed
         logger.log("MULTICONTEXT INTERIM TOTAL CONSUMED", total_consumed)
+
+        # busy wait until time is passed
+        while time.time() - ipr_iter_time_start < ipriter_time_limit:
+            pass
+        
+        logger.log("IPR ITERATION END", cur_ipriteration)
+        cur_ipriteration += 1
 
 
     # postmortem of data, calculate error
