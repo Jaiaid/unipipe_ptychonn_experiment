@@ -191,7 +191,10 @@ if __name__=="__main__":
         cur_ipriteration += 1
 
         # print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
-        current_generate_idx = (skip_data_idx+1)*cur_ipriteration
+        if args.unipipedp_scheduler and (args.acquisition_rate == 2000 or args.acquisition_rate == 4000):
+            current_generate_idx = (skip_data_idx+1)*cur_ipriteration
+        else:
+            current_generate_idx = skip_data_idx*cur_ipriteration
 
     print("==================================IPR Mock Status=================================")
     print("Data rate: {0}Hz".format(args.acquisition_rate))
