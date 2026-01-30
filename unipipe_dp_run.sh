@@ -16,6 +16,8 @@ rate=$3
 deadlinemsec=$4
 skipline=$5
 
+echo $@
+
 if [ $# -ge 6 -a $6 != "None" ];then
     iprrate=$6
     IPRRATE="-iprt "${iprrate}
@@ -37,30 +39,33 @@ if [ $# -ge 9 -a $9 != "None" ];then
     echo $GTCOUNT
 fi
 
-if [ $# -ge 10 -a $10 != "None" ];then
+if [ $# -ge 10 -a ${10} != "None" ];then
     DATASET_TYPE="--large-dataset"
     echo $DATASET_TYPE
 fi
 
+if [ $# -ge 11 -a ${11} != "None" ];then
+    MAXINFERBS="--maxinfer-bs "${11}
+    echo $MAXINFERBS
+fi
 
-if [ $# -ge 11 -a $11 != "None" ];then
+if [ $# -ge 12 -a ${12} != "None" ];then
     TRAINVALIDFLAG="--validation-training"
     echo $TRAINVALIDFLAG
 fi
 
 
-if [ $# -eq 12 -a $12 != "None" ];then
-    ratio=$12
+if [ $# -eq 13 -a ${13} != "None" ];then
+    ratio=${13}
     RATIO="-iprfrac "${ratio}
     echo $RATIO
 fi
 
-if [ $# -eq 13 ];then
-    inferbsfactor=$13
+if [ $# -eq 14 ];then
+    inferbsfactor=$14
     INFFACT="-inffac "${inferbsfactor}
     echo $INFFACT
 fi
-
 
 echo "Deleting data from /dev/shm"
 set +x
@@ -74,7 +79,7 @@ set -x
 
 EXP_SCRIPT=unipipe_dp.py
 
-python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS $GTCOUNT -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
+python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS $GTCOUNT $MAXINFERBS -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
 UNIPIPE_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

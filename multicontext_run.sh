@@ -27,17 +27,22 @@ fi
 
 if [ $# -ge 7 -a $7 != "None" ];then
     MODEL_TYPE="--model-type "$7
-    echo $IPRRATE
+    echo $MODEL_TYPE
 fi
 
 if [ $# -ge 8 -a $8 != "None" ];then
     DATASET_TYPE="--large-dataset"
-    echo $IPRRATE
+    echo $DATASET_TYPE
 fi
 
 if [ $# -eq 9 ];then
-    BSARG="-bs "${bs}
+    BSARG="-bs "${9}
     echo $BSARG
+fi
+
+if [ $# -ge 10 -a ${10} != "None" ];then
+    MAXINFERBS="--maxinfer-bs "${10}
+    echo $MAXINFERBS
 fi
 
 echo "Deleting data from /dev/shm"
@@ -54,7 +59,7 @@ python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -id
 TRAIN_PID=$!
 
 # it needs dataset type information as it will 
-python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv $MODEL_TYPE &
+python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv $MODEL_TYPE $MAXINFERBS &
 INFER_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

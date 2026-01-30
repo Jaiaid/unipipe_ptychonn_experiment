@@ -24,33 +24,38 @@ fi
 
 if [ $# -ge 7 -a $7 != "None" ];then
     TRAINBS="-trainbs "$7
-    echo $TRAINVALIDFLAG
+    echo $TRAINBS
 fi
 
 if [ $# -ge 8 -a $8 != "None" ];then
     MODEL_TYPE="--model-type "$8
-    echo $IPRRATE
+    echo $MODEL_TYPE
 fi
 
 if [ $# -ge 9 -a $9 != "None" ];then
     DATASET_TYPE="--large-dataset"
-    echo $IPRRATE
+    echo $DATASET_TYPE
 fi
 
-if [ $# -ge 10 -a $10 != "None" ];then
+if [ $# -ge 10 -a ${10} != "None" ];then
+    MAXINFERBS="--maxinfer-bs "${10}
+    echo $MAXINFERBS
+fi
+
+if [ $# -ge 11 -a ${11} != "None" ];then
     TRAINVALIDFLAG="--validation-training"
     echo $TRAINVALIDFLAG
 fi
 
 
-if [ $# -eq 11 -a $11 != "None" ];then
-    ratio=$11
+if [ $# -eq 12 -a ${12} != "None" ];then
+    ratio=${12}
     RATIO="-iprfrac "${ratio}
     echo $RATIO
 fi
 
-if [ $# -eq 12 ];then
-    inferbsfactor=$12
+if [ $# -eq 13 ];then
+    inferbsfactor=${13}
     INFFACT="-inffac "${inferbsfactor}
     echo $INFFACT
 fi
@@ -68,7 +73,7 @@ set -x
 
 EXP_SCRIPT=unipipe.py
 
-python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
+python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS $MAXINFERBS -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
 UNIPIPE_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

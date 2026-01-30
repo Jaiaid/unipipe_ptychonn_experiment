@@ -19,12 +19,17 @@ iprt=$6
 
 if [ $# -ge 7 -a $7 != "None" ];then
     MODEL_TYPE="--model-type "$7
-    echo $IPRRATE
+    echo $MODEL_TYPE
 fi
 
 if [ $# -ge 8 -a $8 != "None" ];then
     DATASET_TYPE="--large-dataset"
-    echo $iprt
+    echo $DATASET_TYPE
+fi
+
+if [ $# -ge 9 -a $9 != "None" ];then
+    MAXINFERBS="--maxinfer-bs "$9
+    echo $MAXINFERBS
 fi
 
 echo "Deleting data from /dev/shm"
@@ -39,7 +44,7 @@ set -x
 
 EXP_SCRIPT=pretrained_noipr.py
 
-python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -iprt ${iprt} -csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE &
+python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -iprt ${iprt} -csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE $MAXINFERBS&
 PRETRAIN_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &
