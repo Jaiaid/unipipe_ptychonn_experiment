@@ -121,27 +121,16 @@ def estimate_T_IPR_unipipe(
 
 def estimate_unipipe_schedule(
         phase_retrieval_genrate: float, acquisition_rate: float,
-        deadline_sec: float, ground_truth_count:int, epochs:int=1) -> float:
+        deadline_sec: float, ground_truth_count:int, forward_time_per_sample = [],
+        backward_time_per_sample = [], epochs:int=1, maxbs:int=64) -> float:
 
     interarrival_gap = 1 / acquisition_rate
     Tk = ground_truth_count/phase_retrieval_genrate # time to generate TEST_K ground truth data
     accum_while_gt_genereted = int(Tk / interarrival_gap)
 
-    # read profile data to get
-    forward_time = []
-    backward_time = []
-    with open("ptychonn/benchmark_ptychonn_nn_step.csv") as f:
-        for line in f.readlines()[1:]:
-            tokens = line.split()
-            bs = int(tokens[0])
-            fwd_time = float(tokens[4])
-            bwd_time = float(tokens[6])
-            forward_time.append(fwd_time)
-            backward_time.append(bwd_time)
-
     solution = unipipe_scheduler.resolve_schedule(
-        ground_truth_count, accum_while_gt_genereted, 0,  interarrival_gap,
-        deadline_sec, forward_time, backward_time
+        ground_truth_count, accum_while_gt_genereted, 0, maxbs, interarrival_gap,
+        deadline_sec, forward_time_per_sample, backward_time_per_sample
     )
 
     # build schedule
@@ -183,3 +172,24 @@ def estimate_infer_bs(datarate, deadline):
 def estimate_train_bs(infer_bs, time_uf, time_ub, datarate):
     return math.floor(infer_bs * (1-datarate*time_uf) /\
                         ((time_uf + time_ub) * datarate))
+
+class SystemTuner:
+    """A class for system tuning utilities."""
+
+    @staticmethod
+    def calc_deadline_aware_maxthpt_bs(
+        bs_forwardpass_per_sample_benchmark: list[float], deadline_sec:float, datarate: float) -> int:
+        """Calculate the maximum throughput batch size that meets the deadline constraint.
+
+        Args:
+            bs_forwardpass_per_sample_benchmark (list[float]): List of throughput values (samples/sec) for different batch sizes. zero index corresponds to batch size 1.
+            deadline_sec (float): Deadline in seconds.
+
+        Returns:
+            int: Maximum batch size that meets the deadline constraint.
+        """
+        max_bs = 0
+        for bs, latency in enumerate(bs_forwardpass_per_sample_benchmark):
+            if (bs+1)*latency + (bs+1)/datarate <= deadline_sec:
+                max_bs = bs+1
+        return max_bs
