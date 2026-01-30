@@ -15,7 +15,6 @@ typedef std::vector<std::vector<std::vector<float>>> schedule_entry_matrix;
 
 #define NN_UF 0.00027 // defined for now, for proper implementation, we can read from data file or some performance model
 #define NN_UB 0.00036 // defined for now, for proper implementation, we can read from data file or some performance model
-#define MAX_BATCH_SIZE 128 // maximum feasible batch size for iteration due to memory constraint
 #define INF 1e10 // for memoization initialization
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
@@ -69,17 +68,17 @@ float EST_ITER_QUALITY(
  * start_timepoint: the time point when scheduling starts
  * interarrival_time: arrival interval of inference samples
  * deadline_sec: deadline for each inference sample
- * bs_fw_benchmark: Forward pass time vector where bs_fw_benchmark[i] gives the forward pass time for batch size i+1 
- * bs_bw_benchmark: Backward pass time vector where bs_bw_benchmark[i] gives the backward pass time for batch size i+1 
- *
+ * bs_fw_benchmark: Forward pass time vector where bs_fw_benchmark[i] gives the forward pass time per sample at batch size i+1 
+ * bs_bw_benchmark: Backward pass time vector where bs_bw_benchmark[i] gives the backward pass time per sample at batch size i+1 
+ * max_batch_size: maximum feasible batch size due to memory constraint or deadline aware tuning
  *
  * each solution memo[i][j] is constructed by considering all feasible (k,l) batch sizes and memo[i-k][j-l] 
  * to process while maintainitng deadlines
  * 0<=k, l<MAX_FEASIBLE_BATCHSIZE
  */
 schedule_entry_matrix schedule_solver(
-    int traindatset_size, int accum_while_gt_generated, float start_timepoint,
-    const float interarrival_time, const float deadline_sec,
+    int traindatset_size, int accum_while_gt_generated, float start_timepoint, 
+    const int max_batch_size, const float interarrival_time, const float deadline_sec,
     std::vector<float> &bs_fw_benchmark, std::vector<float> &bs_bw_benchmark
 )
 {
@@ -96,7 +95,7 @@ schedule_entry_matrix schedule_solver(
     {
         for(upto_infer_size=0;upto_infer_size<=accum_while_gt_generated;upto_infer_size++)
         {
-            if (upto_train_size + upto_infer_size <= MAX_BATCH_SIZE) {
+            if (upto_train_size + upto_infer_size <= max_batch_size) {
                 dp_ara[upto_train_size][upto_infer_size][2] = EST_ITERTIME(
                     upto_train_size, upto_infer_size,
                     bs_fw_benchmark[upto_train_size+upto_infer_size-1], bs_bw_benchmark[upto_train_size-1]
@@ -120,14 +119,14 @@ schedule_entry_matrix schedule_solver(
             // otherwise no solution may be found although there is, because we break the loop due to negative idx
             bool solution_found = false;
 
-            int t_idx_limit = MIN(MAX_BATCH_SIZE, upto_train_size);
+            int t_idx_limit = MIN(max_batch_size, upto_train_size);
             for(t_idx=0;t_idx<=t_idx_limit;t_idx++)
             {
-                int i_idx_limit = MIN(MAX_BATCH_SIZE, upto_infer_size);
+                int i_idx_limit = MIN(max_batch_size, upto_infer_size);
                 for(i_idx=0;i_idx<=i_idx_limit;i_idx++)
                 {
                     // not acceptable condition due to memory constraint
-                    if(t_idx + i_idx > MAX_BATCH_SIZE) {
+                    if(t_idx + i_idx > max_batch_size) {
                         break;
                     }
 
