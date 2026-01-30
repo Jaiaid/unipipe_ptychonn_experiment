@@ -31,7 +31,7 @@ INFERENCE_BATCH_SIZE = 64
 LR = NGPUS * 1e-3
 
 # this threshold helps determine when to stop training
-LOSS_CHANGE_MIN_THRESHOLD = 1e-3
+LOSS_CHANGE_MIN_THRESHOLD = 1e-4
 
 # taken as mean from QPS range from https://www.mdpi.com/1424-8220/24/16/5262
 # initially used 259 got from 20% of whole data as test set served over 10s
@@ -39,7 +39,7 @@ LOSS_CHANGE_MIN_THRESHOLD = 1e-3
 # # request deadline
 # DEADLINE_PER_REQ_SEC = 0.02
 
-EPOCHS = 1000
+EPOCHS = 1
 
 ROOT_DIR = "../../"
 DATA_DIFFR_PATH = os.path.join(ROOT_DIR, 'data/20191008_39_diff.npz')
