@@ -451,6 +451,21 @@ def get_model(type_name:str) -> nn.Module:
 
     return None
 
+def get_model_name_from_type(type_name:str) -> str:
+    if type_name == "1.25M":
+        return "ptychonn"
+    elif type_name == "5M":
+        return "ptychonn5M"
+    elif type_name == "10M":
+        return "ptychonn10M"
+    elif type_name == "20M":
+        return "ptychonn20M"
+    elif type_name == "100M":
+        return "ptychonn100M"
+    elif type_name == "200M":
+        return "ptychonn200M"
+    return None
+
 
 if __name__=="__main__":
     model = recon_model()
