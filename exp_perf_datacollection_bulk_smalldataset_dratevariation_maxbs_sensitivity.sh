@@ -55,7 +55,7 @@ for MAXBS in 16 32 64 128;do
         echo $IPR_PROCESS_PID
 
         # True for per iter validation activation
-        bash unipipe_dp_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 1.25M $GTCOUNT_DPINPUT None $MAXBS
+        bash unipipe_dp_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 64 1.25M $GTCOUNT_DPINPUT None $MAXBS
         
         set +x
         while ps -p ${STREAM_PROCESS_PID} > /dev/null
