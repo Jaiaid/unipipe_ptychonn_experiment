@@ -20,7 +20,7 @@ python3 plot_missrate_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/larged
 python3 plot_missrate_barclusters_bratevariation.py -d $RESULT_LOG_DIR/largedataset_bratevariation -o $FIG_DIR/fig_missrate_bratevariation_dataset2
 python3 plot_missrate_barclusters_dratevariation.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_missrate_dratevariation_dataset2
 
-python3 plot_nnerror_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/largedataset_deadlinevariation -o $FIG_DIR/fig_nnerror_deadlinevariation_dataset2
+# python3 plot_nnerror_barclusters_deadlinevariation.py -d $RESULT_LOG_DIR/largedataset_deadlinevariation -o $FIG_DIR/fig_nnerror_deadlinevariation_dataset2
 python3 plot_nnerror_barclusters_bratevariation.py -d $RESULT_LOG_DIR/largedataset_bratevariation -o $FIG_DIR/fig_nnerror_bratevariation_dataset2
 python3 plot_nnerror_barclusters_dratevariation.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nnerror_dratevariation_dataset2
 
@@ -29,12 +29,22 @@ python3 plot_read_streamwait_time.py -d $RESULT_LOG_DIR/smalldataset_dratevariat
 python3 plot_read_streamwait_time.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_read_streamwait_time_largedataset_dratevariation_dataset2
 
 # analyze inference invocation time gap
-python3 ./plot_inference_invocation_gap.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_inference_invokegap_smalldataset_dratevariation_dataset1
-python3 ./plot_inference_invocation_gap.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nn_inference_invokegap_largedataset_dratevariation_dataset2
+python3 plot_inference_invocation_gap.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_inference_invokegap_smalldataset_dratevariation_dataset1
+python3 plot_inference_invocation_gap.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nn_inference_invokegap_largedataset_dratevariation_dataset2
 
 # analyze forward backward pass latency
-python3 ./plot_forward_pass_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_forward_pass_latency_smalldataset_dratevariation_dataset1
-python3 ./plot_backward_pass_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_backward_pass_latency_smalldataset_dratevariation_dataset1
-python3 ./plot_iteration_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_iteration_latency_smalldataset_dratevariation_dataset1
+python3 plot_forward_pass_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_forward_pass_latency_smalldataset_dratevariation_dataset1
+python3 plot_backward_pass_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_backward_pass_latency_smalldataset_dratevariation_dataset1
+python3 plot_iteration_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_iteration_latency_smalldataset_dratevariation_dataset1
+python3 plot_inferread_latency.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_inferread_latency_smalldataset_dratevariation_dataset1
+python3 plot_inference_thpt.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_infer_thpt_smalldataset_dratevariation_dataset1
+python3 plot_queue_length.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_nn_queuelen_latency_smalldataset_dratevariation_dataset1
+python3 plot_timeseries_infer_context.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_inferctx_timebreakdown_smalldataset_dratevariation_dataset1 -r 1000
+python3 plot_timeseries_infer_context.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_inferctx_timebreakdown_smalldataset_dratevariation_dataset1 -r 2000
+python3 plot_timeseries_infer_context.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_inferctx_timebreakdown_smalldataset_dratevariation_dataset1 -r 3000
+python3 plot_timeseries_infer_context.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_inferctx_timebreakdown_smalldataset_dratevariation_dataset1 -r 4000
+python3 plot_timeseries_infer_context.py -d $RESULT_LOG_DIR/smalldataset_dratevariation -o $FIG_DIR/fig_inferctx_timebreakdown_smalldataset_dratevariation_dataset1 -r 5000
 
-python3 ./plot_forward_pass_latency.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nn_forward_pass_latency_largedataset_dratevariation_dataset2
+
+# python3 plot_forward_pass_latency.py -d $RESULT_LOG_DIR/largedataset_dratevariation -o $FIG_DIR/fig_nn_forward_pass_latency_largedataset_dratevariation_dataset2
+python3 plot_maxbs_sensitivity.py -d $RESULT_LOG_DIR/smalldataset_dratevariation_maxbs_sensitivity -o $FIG_DIR/fig_maxbs_sensitivity_smalldataset_dratevariation_dataset1
