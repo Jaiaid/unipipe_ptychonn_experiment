@@ -32,11 +32,13 @@ for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
     deadlinemsec=$DEADLINEMSEC
 
-    for rate in 1000 2000 3000;do
+   # 1000 2000 3000 
+    for rate in 4000 2000 3000 4000 5000;do
         dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
         set +x
         rm /dev/shm/*.raw
+        # rsync -a --delete empty_folder/ /dev/shm
         rm -r /dev/shm/PTYCHO_STREAM*
         set -x
 
@@ -50,6 +52,7 @@ for c in $INTERVAL_COUNT;do
 
         # True for per iter validation activation
         bash unipipe_dp_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 64 1.25M $GTCOUNT_DPINPUT
+        
         set +x
         while ps -p ${STREAM_PROCESS_PID} > /dev/null
         do
@@ -62,6 +65,7 @@ for c in $INTERVAL_COUNT;do
             # echo "IPR process alive"
             sleep 1
         done
+
         set -x
 
         # move generated files for later analysis
@@ -80,12 +84,13 @@ for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
     deadlinemsec=$DEADLINEMSEC
 
-    for rate in 1000 2000 3000;do
+    for rate in 1000 2000 3000 4000 5000;do
         dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
         set +x
         rm /dev/shm/*.raw
         rm -r /dev/shm/PTYCHO_STREAM*
+        rm -r /dev/shm/MODEL_MULTICONTEXT*
         set -x
 
         python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
@@ -112,17 +117,19 @@ for c in $INTERVAL_COUNT;do
     done
 done
 
+
 mkdir -p $EXP_RESULT_DIR/pretrained
 for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
     deadlinemsec=$DEADLINEMSEC
 
-    for rate in 1000 2000 3000;do
+    for rate in 1000 2000 3000 4000 5000;do
         dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
         set +x
         rm /dev/shm/*.raw
         rm -r /dev/shm/PTYCHO_STREAM*
+        rm -r /dev/shm/MODEL_MULTICONTEXT*
         set -x
 
         python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
@@ -159,24 +166,26 @@ for c in $INTERVAL_COUNT;do
     done
 done
 
+
 mkdir -p $EXP_RESULT_DIR/unipipe
 for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
     deadlinemsec=$DEADLINEMSEC
 
-    for rate in 1000 2000 3000;do
+    for rate in 1000 2000 3000 4000 5000;do
         dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
         set +x
         rm /dev/shm/*.raw
         rm -r /dev/shm/PTYCHO_STREAM*
+        rm -r /dev/shm/MODEL_MULTICONTEXT*
         set -x
 
         python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipe &
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -212,10 +221,9 @@ for c in $INTERVAL_COUNT;do
     iprt=$IPR_THROUGHPUT_TUNED
     deadlinemsec=$DEADLINEMSEC
 
-    for rate in 1000 2000 3000;do
+    for rate in 5000 2000 3000 4000 5000;do
         dur=$(($DSCOUNT_PER_INTERVAL/$rate))
     
-
         set +x
         rm /dev/shm/*.raw
         rm -r /dev/shm/PTYCHO_STREAM*
@@ -255,57 +263,6 @@ for c in $INTERVAL_COUNT;do
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/traindatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/inferdatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
-    done
-done
-
-mkdir -p $EXP_RESULT_DIR/multicontext_nocoord
-for c in $INTERVAL_COUNT;do
-    iprt=$IPR_THROUGHPUT_TUNED
-    deadlinemsec=$DEADLINEMSEC
-
-    for rate in 1000 2000 3000;do
-        dur=$(($DSCOUNT_PER_INTERVAL/$rate))
-    
-
-        set +x
-        rm /dev/shm/*.raw
-        rm -r /dev/shm/PTYCHO_STREAM*
-        rm -r /dev/shm/MODEL_MULTICONTEXT*
-        
-        set -x
-
-        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
-        STREAM_PROCESS_PID=$!
-        echo $STREAM_PROCESS_PID
-
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
-        IPR_PROCESS_PID=$!
-        echo $IPR_PROCESS_PID
-
-        bash multicontext_nocoord_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt
-        set +x
-        while ps -p ${STREAM_PROCESS_PID} > /dev/null
-        do
-            # echo "data streamer alive"
-            sleep 1
-        done
-
-        while ps -p ${IPR_PROCESS_PID} > /dev/null
-        do
-            # echo "IPR process alive"
-            sleep 1
-        done
-        set -x
-        
-        # move generated files for later analysis
-        mv ipr_generation_state.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_ipr_generation_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv transmission_state.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_transmission_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv tmp.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_${c}_${deadlinemsec}_${rate}_${iprt}_infer.log
-        mv tmp_train.log ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_${c}_${deadlinemsec}_${rate}_${iprt}_train.log
-        mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext_nocoord/traindatalist_multicontext_nocoord_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
-        mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext_nocoord/inferdatalist_multicontext_nocoord_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
     done
 done
 
