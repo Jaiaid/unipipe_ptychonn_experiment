@@ -257,56 +257,6 @@ for c in $INTERVAL_COUNT;do
 done
 
 
-mkdir -p $EXP_RESULT_DIR/multicontext_nocoord
-for c in $INTERVAL_COUNT;do
-    iprt=$IPR_THROUGHPUT_TUNED
-    rate=$DATARATE
-    dur=$(($DSCOUNT_PER_INTERVAL/$rate))
-
-    for deadlinemsec in 80 160 320;
-    do
-        set +x
-        rm /dev/shm/*.raw
-        rm -r /dev/shm/PTYCHO_STREAM*
-        rm -r /dev/shm/MODEL_MULTICONTEXT*
-        
-        set -x
-
-        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE --large-dataset &
-        STREAM_PROCESS_PID=$!
-        echo $STREAM_PROCESS_PID
-
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE --large-dataset &
-        IPR_PROCESS_PID=$!
-        echo $IPR_PROCESS_PID
-
-        bash multicontext_nocoord_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 1.25M --large-dataset 
-        set +x
-        while ps -p ${STREAM_PROCESS_PID} > /dev/null
-        do
-            # echo "data streamer alive"
-            sleep 1
-        done
-
-        while ps -p ${IPR_PROCESS_PID} > /dev/null
-        do
-            # echo "IPR process alive"
-            sleep 1
-        done
-        set -x
-        
-        # move generated files for later analysis
-        mv ipr_generation_state.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_ipr_generation_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv transmission_state.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_transmission_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv tmp.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_${c}_${deadlinemsec}_${rate}_${iprt}_infer.log
-        mv tmp_train.log ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_nocoord_${c}_${deadlinemsec}_${rate}_${iprt}_train.log
-        mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext_nocoord/multicontext_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
-        mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext_nocoord/traindatalist_multicontext_nocoord_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
-        mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext_nocoord/inferdatalist_multicontext_nocoord_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
-    done
-done
-
 popd
 
 set +x
