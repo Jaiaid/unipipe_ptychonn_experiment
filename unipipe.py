@@ -444,7 +444,7 @@ if __name__ == "__main__":
     forward_time_per_sample = []
     backward_time_per_sample = []
     # read profile data to get
-    with open("ptychonn/benchmark_ptychonn_nn_step.csv") as f:
+    with open(f"ptychonn/benchmark_{ptychonn.model.get_model_name_from_type(type_name=args.model_type)}_nn_step.csv") as f:
         for line in f.readlines()[1:]:
             tokens = line.split()
             bs = int(tokens[0])
