@@ -14,9 +14,9 @@ CONSTANTTRAINBS= #--constant-trainbs
 pushd $ROOTDIR
 INTERVAL_COUNT=5
 
-IPR_THROUGHPUT_TUNED=160
+IPR_THROUGHPUT_TUNED=16
 DEADLINEMSEC=80
-DATARATE=2000
+DATARATE=3000
 GTCOUNT_DPINPUT=1
 
 # DATA SAMPLE COUNT
@@ -25,17 +25,20 @@ DSCOUNT=$((161*161))
 DSCOUNT_PER_INTERVAL=$((DSCOUNT/INTERVAL_COUNT))
 SKIPLINE=33
 
-EXP_RESULT_DIR=result_logs/smalldataset_modelvariation
-mkdir -p $EXP_RESULT_DIR
+EXP_RESULT_ROOT_DIR=result_logs/smalldataset_modelvariation
+mkdir -p $EXP_RESULT_ROOT_DIR
 
-mkdir -p $EXP_RESULT_DIR/unipipe_dp
-for c in $INTERVAL_COUNT;do
-    iprt=$IPR_THROUGHPUT_TUNED
-    deadlinemsec=$DEADLINEMSEC
-    rate=$DATARATE
-    
-    for modeltype in 1.25M 5M 10M 20M 100M 200M
-    do
+for MODELTYPE in 1.25M 5M 10M 20M 100M 200M
+do
+    EXP_RESULT_DIR=$EXP_RESULT_ROOT_DIR/modeltype_${MODELTYPE}
+    mkdir -p $EXP_RESULT_DIR
+
+    mkdir -p $EXP_RESULT_DIR/unipipe_dp
+    for c in $INTERVAL_COUNT;do
+        iprt=$IPR_THROUGHPUT_TUNED
+        deadlinemsec=$DEADLINEMSEC
+        rate=$DATARATE
+        
         dur=$(($DSCOUNT_PER_INTERVAL/rate))
         set +x
         rm /dev/shm/*.raw
@@ -51,8 +54,7 @@ for c in $INTERVAL_COUNT;do
         echo $IPR_PROCESS_PID
 
         # True for per iter validation activation
-        bash unipipe_dp_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 64 1.25M $GTCOUNT_DPINPUT
-        set +x
+        bash unipipe_dp_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 64 $MODELTYPE $GTCOUNT_DPINPUT
         while ps -p ${STREAM_PROCESS_PID} > /dev/null
         do
             # echo "data streamer alive"
@@ -75,16 +77,13 @@ for c in $INTERVAL_COUNT;do
         mv /dev/shm/traindatalist_unipipe_dp_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe_dp/traindatalist_unipipe_dp_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_unipipe_dp_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe_dp/inferdatalist_unipipe_dp_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
     done
-done
 
-mkdir -p $EXP_RESULT_DIR/unipipe
-for c in $INTERVAL_COUNT;do
-    iprt=$IPR_THROUGHPUT_TUNED
-    deadlinemsec=$DEADLINEMSEC
-    rate=$DATARATE
+    mkdir -p $EXP_RESULT_DIR/unipipe
+    for c in $INTERVAL_COUNT;do
+        iprt=$IPR_THROUGHPUT_TUNED
+        deadlinemsec=$DEADLINEMSEC
+        rate=$DATARATE
 
-    for modeltype in 1.25M 5M 10M 20M 100M 200M
-    do
         dur=$(($DSCOUNT_PER_INTERVAL/rate))
         set +x
         rm /dev/shm/*.raw
@@ -95,12 +94,12 @@ for c in $INTERVAL_COUNT;do
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipe &
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
         # True for per iter validation activation
-        bash unipipe_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 32 $modeltype
+        bash unipipe_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt 64 $MODELTYPE
         set +x
         while ps -p ${STREAM_PROCESS_PID} > /dev/null
         do
@@ -124,17 +123,14 @@ for c in $INTERVAL_COUNT;do
         mv /dev/shm/traindatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/traindatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
         mv /dev/shm/inferdatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/inferdatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
     done
-done
 
 
-mkdir -p $EXP_RESULT_DIR/multicontext
-for c in $INTERVAL_COUNT;do
-    iprt=$IPR_THROUGHPUT_TUNED
-    deadlinemsec=$DEADLINEMSEC
-    rate=$DATARATE
+    mkdir -p $EXP_RESULT_DIR/multicontext
+    for c in $INTERVAL_COUNT;do
+        iprt=$IPR_THROUGHPUT_TUNED
+        deadlinemsec=$DEADLINEMSEC
+        rate=$DATARATE
 
-    for modeltype in 1.25M 5M 10M 20M 100M 200M
-    do
         dur=$(($DSCOUNT_PER_INTERVAL/rate))
         set +x
         rm /dev/shm/*.raw
@@ -151,7 +147,7 @@ for c in $INTERVAL_COUNT;do
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
-        bash multicontext_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt $modeltype
+        bash multicontext_run.sh $c $dur $rate $deadlinemsec $SKIPLINE $iprt $MODELTYPE
         set +x
         while ps -p ${STREAM_PROCESS_PID} > /dev/null
         do
