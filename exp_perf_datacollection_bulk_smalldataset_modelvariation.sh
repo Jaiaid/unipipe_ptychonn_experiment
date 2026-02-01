@@ -18,6 +18,7 @@ IPR_THROUGHPUT_TUNED=16
 DEADLINEMSEC=80
 DATARATE=3000
 GTCOUNT_DPINPUT=1
+MAXTIMEOUTSEC=120
 
 # DATA SAMPLE COUNT
 # THIS IS IMPORTANT AS IT WILL DETERMINE THE DURATION FOR GIVEN INTERVAL COUNT
@@ -43,13 +44,14 @@ do
         set +x
         rm /dev/shm/*.raw
         rm -r /dev/shm/PTYCHO_STREAM*
+        rm -r /dev/shm/MODEL_MULTICONTEXT*
         set -x
 
-        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
+        timeout $MAXTIMEOUTSEC python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
+        timeout $MAXTIMEOUTSEC python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -84,17 +86,18 @@ do
         deadlinemsec=$DEADLINEMSEC
         rate=$DATARATE
 
-        dur=$(($DSCOUNT_PER_INTERVAL/rate))
+        dur=$(($DSCOUNT_PER_INTERVAL/$rate))
         set +x
         rm /dev/shm/*.raw
         rm -r /dev/shm/PTYCHO_STREAM*
+        rm -r /dev/shm/MODEL_MULTICONTEXT*
         set -x
 
-        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
+        timeout $MAXTIMEOUTSEC python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
+        timeout $MAXTIMEOUTSEC python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -115,13 +118,13 @@ do
         set -x
 
         # move generated files for later analysis
-        mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv tmp.csv ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv tmp.log ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.log
-        mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv /dev/shm/traindatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/traindatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv /dev/shm/inferdatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/inferdatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
+        mv ipr_generation_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_ipr_generation_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv transmission_state.csv ${EXP_RESULT_DIR}/unipipe/unipipe_transmission_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv tmp.csv ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv tmp.log ${EXP_RESULT_DIR}/unipipe/unipipe_${c}_${deadlinemsec}_${rate}_${iprt}.log
+        mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv /dev/shm/traindatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/traindatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv /dev/shm/inferdatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/inferdatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
     done
 
 
@@ -131,7 +134,7 @@ do
         deadlinemsec=$DEADLINEMSEC
         rate=$DATARATE
 
-        dur=$(($DSCOUNT_PER_INTERVAL/rate))
+        dur=$(($DSCOUNT_PER_INTERVAL/$rate))
         set +x
         rm /dev/shm/*.raw
         rm -r /dev/shm/PTYCHO_STREAM*
@@ -139,11 +142,11 @@ do
         
         set -x
 
-        python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
+        timeout $MAXTIMEOUTSEC python3 datastreamer_process.py -r $rate -dmsec $deadlinemsec -skipline $SKIPLINE &
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        timeout $MAXTIMEOUTSEC python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -163,14 +166,14 @@ do
         set -x
         
         # move generated files for later analysis
-        mv ipr_generation_state.csv ${EXP_RESULT_DIR}/multicontext/multicontext_ipr_generation_state_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv transmission_state.csv ${EXP_RESULT_DIR}/multicontext/multicontext_transmission_state_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv tmp.csv ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}_infer.log
-        mv tmp_train.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}_train.log
-        mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/traindatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
-        mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/inferdatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}_${modeltype}.csv
+        mv ipr_generation_state.csv ${EXP_RESULT_DIR}/multicontext/multicontext_ipr_generation_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv transmission_state.csv ${EXP_RESULT_DIR}/multicontext/multicontext_transmission_state_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv tmp.csv ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv tmp_infer.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${deadlinemsec}_${rate}_${iprt}_infer.log
+        mv tmp_train.log ${EXP_RESULT_DIR}/multicontext/multicontext_${c}_${deadlinemsec}_${rate}_${iprt}_train.log
+        mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/traindatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/inferdatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
     done
 done
 
