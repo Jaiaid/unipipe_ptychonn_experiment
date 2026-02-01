@@ -390,7 +390,8 @@ if __name__ == "__main__":
             trainbs=trainbs, datarate=args.datarate, deadline_sec=deadline_sec,
             traindatalist_fileobj=traindatalist_file, ipriteration_no=cur_ipriteration,
             chkpt_dir=multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration),
-            logger=logger, time_limit=ipriter_time_limit)
+            logger=logger, time_limit=ipriter_time_limit-(time.time() - ipr_training_time_start)
+        )
         # log how much ipr iteration matches with unipipe iteration
         logger.log(
             "CURIPRITERATION,EPOCH,TIME_LIMIT,ACTUAL_TIME", 

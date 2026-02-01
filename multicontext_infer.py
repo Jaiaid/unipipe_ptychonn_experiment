@@ -332,7 +332,7 @@ if __name__ == "__main__":
     logger.log("MULTICONTEXT INFER CONSUMPTION START", start_timestamp)
 
     while current_time - start_timestamp < total_runtime:
-        ipr_iter_time_start = time.time()
+        ipr_iter_time_start = cur_ipriteration * ipriter_time_limit + start_timestamp
         infer_datareader.cur_readidx = total_consumed
         # set the reader length for the unipipe call
         # to handle initial boundary condition
@@ -367,6 +367,7 @@ if __name__ == "__main__":
         
         logger.log("IPR ITERATION END", cur_ipriteration)
         cur_ipriteration += 1
+        current_time = time.time()
 
 
     # postmortem of data, calculate error
