@@ -36,7 +36,8 @@ import logfast.fastlogger
 
 read_mismatch_count = 0
 global MAX_INFER_BATCH_SIZE
-
+global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
+INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT = 0
 
 def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
                        teststream:ptychonn.shm_datareader.SHMInferDataReader,
@@ -45,6 +46,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                        logger:logfast.fastlogger.FastLogger,
                        time_limit, periter_validation=False, inffrac=1.0):
     global read_mismatch_count
+    global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
     logger.log("UNIPIPE BEGIN")
     logger.log("UNIPIPE TRAINING DATASET SIZE", len(trainloader))
     logger.log("UNIPIPE INFER DATASET SIZE", len(teststream))
@@ -134,6 +136,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 MAX_INFER_BATCH_SIZE, 
                 int(math.floor(datarate * (time.time() - last_consumption_time)))
             )
+
             logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time)
 
             if stop_train and inferbs > 0 and total_consumed < len(teststream):
@@ -211,6 +214,7 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             # before proceeding to backward pass release the inference results
             # by release means put them in result folder
             # to avoid deadline miss as much as possible
+            infer_delay_missed = 0
             if infer_count > 0:
                 pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
                 pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
@@ -218,21 +222,37 @@ def unipipe_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 if infer_count != len(inferidxlist):
                     print(infer_count != len(inferidxlist), infer_count, len(inferidxlist))
                 for i in range(len(inferidxlist)):
-                    inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_ph_cpu_np[i]
-                    )
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_amps_cpu_np[i]
-                    )
+                    # inference is done so remove the data from shm
+                    # as inference will be done only once
+                    # so delete
+                    try:
+                        ptychonn.ipc.remove_shm(
+                            ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
+                        )
+
+                        ptychonn.ipc.create_shm_data(
+                            os.path.join(
+                                ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                                ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+                            ),
+                            pred_ph_cpu_np[i]
+                        )
+                        ptychonn.ipc.create_shm_data(
+                            os.path.join(
+                                ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                                ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+                            ),
+                            pred_amps_cpu_np[i]
+                        )
+                    
+                        inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+                    except FileNotFoundError as ex:
+                        infer_delay_missed += 1
+                        INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
+                
+                logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
+                if infer_delay_missed > 0:
+                    teststream.reposition(forward=True)
 
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
@@ -578,7 +598,7 @@ if __name__ == "__main__":
 
         cur_ipriteration += int((time.time() - unipipe_time_start) // unipipe_time_limit)
 
-
+    logger.log("INFER DELAY MISS COUNT", INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT)
     # postmortem of data, calculate error
     amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(
         skip_line=args.skip_line_pretrained, large_dataset=args.large_dataset

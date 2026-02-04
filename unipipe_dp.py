@@ -35,6 +35,8 @@ import ptychonn.utils
 import logfast.fastlogger
 
 global MAX_INFER_BATCH_SIZE
+global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
+INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT = 0
 
 
 def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
@@ -44,6 +46,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                        logger:logfast.fastlogger.FastLogger, iteration_schedule=[],
                        time_limit=None, periter_validation=False, inffrac=1.0):
 
+    global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
     logger.log("UNIPIPE DP BEGIN")
     logger.log("UNIPIPE DP TRAINING DATASET SIZE", len(trainloader))
     logger.log("UNIPIPE DP INFER DATASET SIZE", len(teststream))
@@ -206,6 +209,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
             # before proceeding to backward pass release the inference results
             # by release means put them in result folder
             # to avoid deadline miss as much as possible
+            infer_delay_missed = 0
             if infer_count > 0:
                 pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
                 pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
@@ -213,22 +217,37 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 if infer_count != len(inferidxlist):
                     print(infer_count != len(inferidxlist), infer_count, len(inferidxlist))
                 for i in range(len(inferidxlist)):
-                    inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_ph_cpu_np[i]
-                    )
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_amps_cpu_np[i]
-                    )
+                    # inference is done so remove the data from shm
+                    # as inference will be done only once
+                    # so delete
+                    try:
+                        ptychonn.ipc.remove_shm(
+                            ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
+                        )
 
+                        ptychonn.ipc.create_shm_data(
+                            os.path.join(
+                                ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                                ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+                            ),
+                            pred_ph_cpu_np[i]
+                        )
+                        ptychonn.ipc.create_shm_data(
+                            os.path.join(
+                                ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                                ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+                            ),
+                            pred_amps_cpu_np[i]
+                        )
+                    
+                        inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+                    except FileNotFoundError as ex:
+                        infer_delay_missed += 1
+                        INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
+                
+                logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
+                if infer_delay_missed > 0:
+                    teststream.reposition(forward=True)
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
 
@@ -594,6 +613,7 @@ if __name__ == "__main__":
         # amp error, ph error, nn amp error, nn ph error
         fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
 
+    logger.log("INFER DELAY MISS COUNT", INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT)
     traindatalist_file.close()
     inferdatalist_file.close()
     logger.log("MEAN TIME EACH INTERVAL", sum(time_list[2:])/(len(time_list)-2), unipipe_time_limit)

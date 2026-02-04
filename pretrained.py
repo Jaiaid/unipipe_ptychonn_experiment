@@ -33,12 +33,15 @@ import ptychonn.shm_datareader
 import logfast.fastlogger
 
 global MAX_INFER_BATCH_SIZE
+global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
+INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT = 0
 
 def pretrained_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
         datarate:float, start_timestamp:float, time_limit:float,
         inferdatalist_fileobj, logger:logfast.fastlogger.FastLogger):
 
+    global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
     logger.log("PRETRAINED BEGIN")
 
     # to store training related metrics
@@ -61,6 +64,7 @@ def pretrained_inferonly_process(
             MAX_INFER_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
         )
+
         logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time)
         # inferbs = ptychonn.parameters.INFERENCE_BATCH_SIZE
         # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
@@ -69,16 +73,13 @@ def pretrained_inferonly_process(
         if inferbs > 0:
             try:
                 infer_batch, consumed, missed, inferidxlist = teststream.read(
-                    bs=min(inferbs, len(teststream) - total_consumed),
-                    logger=logger, blocking_call=True
+                    bs=min(inferbs, len(teststream) - total_consumed), logger=logger, blocking_call=True
                 )
 
                 if infer_batch is not None:
                     infer_count = infer_batch.shape[0]
                     total_missed += missed
                     total_consumed += infer_count
-                else:
-                    logger.log("INFER BATCH NONE TYPE RETURNED", consumed, missed, inferidxlist)
             except Exception as e:
                 print(e)
                 continue
@@ -100,27 +101,43 @@ def pretrained_inferonly_process(
         pred_amps, pred_phs = model(ft_images) #Forward pass
         forward_pass_done_time = time.time()
 
+        infer_delay_missed = 0
         if infer_count > 0:
             pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
             pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
             # print(pred_amps.shape, pred_phs.shape)
             for i in range(infer_count):
-                inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                ptychonn.ipc.create_shm_data(
-                    os.path.join(
-                        ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                        ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                    ),
-                    pred_ph_cpu_np[i]
-                )
-                ptychonn.ipc.create_shm_data(
-                    os.path.join(
-                        ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                        ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                    ),
-                    pred_amps_cpu_np[i]
-                )
+                # inference is done so remove the data from shm
+                # as inference will be done only once
+                # so delete
+                try:
+                    ptychonn.ipc.remove_shm(
+                        ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
+                    )
 
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        pred_ph_cpu_np[i]
+                    )
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        pred_amps_cpu_np[i]
+                    )
+                
+                    inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+                except FileNotFoundError as ex:
+                    infer_delay_missed += 1
+                    INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
+
+            logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
+            if infer_delay_missed > 0:
+                teststream.reposition(forward=True)
         # update total missed count
         logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
         total_iter_count += 1
@@ -212,6 +229,10 @@ if __name__ == "__main__":
     
     # training state controller variable initiation
     deadline_sec = args.deadline / 1000
+    ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+        phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
+        acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+    )
 
     forward_time_per_sample = []
     backward_time_per_sample = []
@@ -253,6 +274,7 @@ if __name__ == "__main__":
         deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
     )
     total_consumed = 0
+    cur_ipriteration = 0
 
     logger.log("PRETRAINED CONSUMPTION START", start_timestamp)
     
@@ -271,12 +293,12 @@ if __name__ == "__main__":
             logger=logger, datarate=args.datarate, time_limit=total_runtime - (time.time() - start_timestamp))
         
         # log how much ipr iteration matches with unipipe iteration
-
+        cur_ipriteration += 1
         current_time = time.time()
         total_consumed += consumed
         logger.log("PRETRAINED INTERIM TOTAL CONSUMED", total_consumed)
 
-
+    logger.log("INFER DELAY MISS COUNT", INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT)
     # postmortem of data, calculate error
     amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(
         skip_line=args.skip_line_pretrained, large_dataset=args.large_dataset

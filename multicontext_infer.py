@@ -39,6 +39,8 @@ model_load_spenttime_list = []
 read_mismatch_count = 0
 
 global MAX_INFER_BATCH_SIZE
+global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
+INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT = 0
 
 
 def multicontext_inferonly_process(
@@ -48,6 +50,7 @@ def multicontext_inferonly_process(
 
     logger.log("MULTICONTEXT INFER BEGIN")
     global read_mismatch_count
+    global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
 
     # to store training related metrics
     total_consumed = 0
@@ -95,6 +98,7 @@ def multicontext_inferonly_process(
             MAX_INFER_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
         )
+
         # print(inferbs, total_consumed, len(teststream))
         # inferbs = MAX_INFER_BATCH_SIZE
         # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
@@ -136,26 +140,44 @@ def multicontext_inferonly_process(
         pred_amps, pred_phs = model(ft_images) #Forward pass
         forward_pass_done_time = time.time()
 
+        infer_delay_missed = 0
         if infer_count > 0:
             pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
             pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
             # print(pred_amps.shape, pred_phs.shape)
             for i in range(infer_count):
-                inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                ptychonn.ipc.create_shm_data(
-                    os.path.join(
-                        ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                        ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                    ),
-                    pred_ph_cpu_np[i]
-                )
-                ptychonn.ipc.create_shm_data(
-                    os.path.join(
-                        ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                        ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                    ),
-                    pred_amps_cpu_np[i]
-                )
+                # inference is done so remove the data from shm
+                # as inference will be done only once
+                # so delete
+                try:
+                    ptychonn.ipc.remove_shm(
+                        ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
+                    )
+
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        pred_ph_cpu_np[i]
+                    )
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        pred_amps_cpu_np[i]
+                    )
+                
+                    inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+                except FileNotFoundError as ex:
+                    infer_delay_missed += 1
+                    
+                    INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
+            
+            logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
+            if infer_delay_missed > 0:
+                teststream.reposition(forward=True)
 
         # update total missed count
         logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
@@ -381,6 +403,7 @@ if __name__ == "__main__":
 
     inferdatalist_file.close()
 
+    logger.log("INFER DELAY MISS COUNT", INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT)
     logger.log(
         "MODEL RESTORE OVERHEADS", model_load_spenttime_list
     )

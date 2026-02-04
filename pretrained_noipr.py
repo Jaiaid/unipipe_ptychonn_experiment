@@ -32,14 +32,16 @@ import ptychonn.shm_datareader
 # for logging
 import logfast.fastlogger
 
-
 global MAX_INFER_BATCH_SIZE
+global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
+INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT = 0
 
 def pretrained_inferonly_process(
         model, teststream:ptychonn.shm_datareader.SHMInferDataReader,
         datarate:float, start_timestamp:float, time_limit:float,
         inferdatalist_fileobj, logger:logfast.fastlogger.FastLogger):
 
+    global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
     logger.log("PRETRAINED NOIPR BEGIN")
 
     # to store training related metrics
@@ -87,47 +89,54 @@ def pretrained_inferonly_process(
 
         last_consumption_time =  teststream.last_read_timestamp
         logger.log("INFER READ LATENCY", time.time() - iteration_start_time, infer_count)
-
         # measure the gap between two consecutive forward pass
         logger.log("INFER GAP", time.time() - forward_pass_arrival_time)
         forward_pass_arrival_time = time.time()
+
         # move the infer data to GPU
         ft_images = torch.tensor(infer_batch).to("cuda")
 
-        # random.seed(ptychonn.parameters.SEED)
-        # torch.manual_seed(ptychonn.parameters.SEED)
-        # torch.cuda.manual_seed(ptychonn.parameters.SEED)
-        # torch.cuda.manual_seed_all(ptychonn.parameters.SEED)
-        # np.random.seed(ptychonn.parameters.SEED)
-        # torch.backends.cudnn.deterministic = True
-        # torch.backends.cudnn.benchmark = False
-        # torch.use_deterministic_algorithms(True)
-        # ft_images = torch.zeros_like(ft_images).to("cuda")
         logger.log("PRETRAINED NOIPR INFER BS", infer_count)
         # to keep track how many infer request missed due to forward pass latency
         pred_amps, pred_phs = model(ft_images) #Forward pass
         forward_pass_done_time = time.time()
 
+        infer_delay_missed = 0
         if infer_count > 0:
             pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
             pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
             for i in range(infer_count):
-                inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                ptychonn.ipc.create_shm_data(
-                    os.path.join(
-                        ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                        ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                    ),
-                    pred_ph_cpu_np[i]
-                )
-                ptychonn.ipc.create_shm_data(
-                    os.path.join(
-                        ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                        ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                    ),
-                    pred_amps_cpu_np[i]
-                )
+                # inference is done so remove the data from shm
+                # as inference will be done only once
+                # so delete
+                try:
+                    ptychonn.ipc.remove_shm(
+                        ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
+                    )
 
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        pred_ph_cpu_np[i]
+                    )
+                    ptychonn.ipc.create_shm_data(
+                        os.path.join(
+                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+                        ),
+                        pred_amps_cpu_np[i]
+                    )
+                
+                    inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+                except FileNotFoundError as ex:
+                    infer_delay_missed += 1
+                    INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
+
+            logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
+            if infer_delay_missed > 0:
+                teststream.reposition(forward=True)
                 # print(torch.mean(pred_amps[i]), torch.mean(pred_phs[i]), np.mean(pred_amps_cpu_np[i]), np.mean(pred_ph_cpu_np[i]))
                 # print(torch.mean(ft_images[i]))
                 # exit()
@@ -272,7 +281,6 @@ if __name__ == "__main__":
         deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
     )
     total_consumed = 0
-
     logger.log("PRETRAINED NOIPR CONSUMPTION START", start_timestamp)
     
     while current_time - start_timestamp < total_runtime:
@@ -295,7 +303,7 @@ if __name__ == "__main__":
         total_consumed += consumed
         logger.log("PRETRAINED INTERIM TOTAL CONSUMED", total_consumed)
 
-
+    logger.log("INFER DELAY MISS COUNT", INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT)
     # postmortem of data, calculate error
     amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(
         skip_line=args.skip_line_pretrained, large_dataset=args.large_dataset
