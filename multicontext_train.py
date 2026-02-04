@@ -76,7 +76,11 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     stop_train = False
     next_model = 0
     total_traindata_consumed = 0
-
+    # Temporary
+    # train_batch_large = torch.zeros(64, 1,64,64)
+    # target_phase_large = torch.zeros(64, 1,64,64)
+    # target_amp_large = torch.zeros(64, 1,64,64)
+    #
     # arbitrary large epoch, for coding ease in tracking an epoch
     # actual breaking condition is on time limit and loss
     for cur_epoch in range(epoch_count):
@@ -102,7 +106,10 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             train_batch = trainloader.read(bs=min(trainbs, len(trainloader) - epoch_consumed))
             if train_batch[0] is None:
                 continue
-
+            # Temporary
+            # train_batch_large[0:] = torch.tensor(train_batch[0])
+            # train_batch = train_batch_large
+            #
             # some infer data is there, merge and pass to context
             # or training is done now to pass only infer data to context
             # or no infer data is in pipeline for now, so only training
@@ -116,7 +123,12 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - iteration_start_time)
 
-            
+            # Temoporary
+            # target_amp_large[0:] = torch.tensor(train_batch[1])
+            # target_phase_large[0:] = torch.tensor(train_batch[2])
+            # gt_amps = target_amp_large.to("cuda")
+            # gt_phs = target_phase_large.to("cuda")
+            # 
             gt_amps = torch.tensor(train_batch[1]).to("cuda")
             gt_phs = torch.tensor(train_batch[2]).to("cuda")
 
