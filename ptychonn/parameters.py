@@ -39,7 +39,7 @@ LOSS_CHANGE_MIN_THRESHOLD = 1e-4
 # # request deadline
 # DEADLINE_PER_REQ_SEC = 0.02
 
-EPOCHS = 1
+EPOCHS = 100
 
 ROOT_DIR = "../../"
 DATA_DIFFR_PATH = os.path.join(ROOT_DIR, 'data/20191008_39_diff.npz')
