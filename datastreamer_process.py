@@ -85,7 +85,7 @@ if __name__=="__main__":
     # removal_loop_iteration_mean = 0
     # removal_loop_iteration_mean_count = 0
 
-    print("starting transmission", start_timestamp)
+    print("starting transmission", start_timestamp, deadline_sec, args.rate)
     data_interval_start_timestamp = start_timestamp
     for i in range(diffr_data.shape[0]):
         for j in range(diffr_data.shape[1]):
@@ -126,7 +126,7 @@ if __name__=="__main__":
 
             # we assume deadline >> interval between two data samples
             # therefore, waiting for new data to arrive will not cause deadline to be over significantly
-            while current_timestamp - data_interval_start_timestamp < 1/args.rate - 0.001:
+            while current_timestamp - data_interval_start_timestamp < 1/args.rate - 0.0001:
                 busyloop_iteration_count += 1
 
                 current_timestamp = time.time()
@@ -163,7 +163,16 @@ if __name__=="__main__":
         # keep deleting data if deadline over
         while next_delete_idx < len(deadline_time_list) and deadline_time_list[next_delete_idx] < current_timestamp:
             try:
-                ipc.remove_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx))
+                ipc.move_shm(parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx), parameters.SHM_MARKER_STALE_FOLDER)
+                ipc.create_shm_marker(
+                    os.path.join(
+                        parameters.SHM_MARKER_STALE_FOLDER,
+                        "{0}_{1}.ts".format(
+                            parameters.SHM_DATA_DIFFR_NAMEFMT.format(next_delete_idx), 
+                            (time.time() - start_timestamp)*args.rate
+                        )
+                    )
+                )
                 missed += 1
                 missed_after_evaluation_time += 1
                 if next_delete_idx > total_image_count/5:
