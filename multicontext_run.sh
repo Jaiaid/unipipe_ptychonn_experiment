@@ -45,6 +45,11 @@ if [ $# -ge 10 -a ${10} != "None" ];then
     echo $MAXINFERBS
 fi
 
+if [ $# -ge 11 -a ${11} != "None" ];then
+    GTCOUNT="-gtcount "${11}
+    echo $GTCOUNT
+fi
+
 echo "Deleting data from /dev/shm"
 set +x
 rm /dev/shm/unipipe_exp*
@@ -55,11 +60,11 @@ set -x
 
 # deadlinemsec=$((1000*$accumulationallow/$rate))
 
-python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE &
+python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE $GTCOUNT &
 TRAIN_PID=$!
 
 # it needs dataset type information as it will 
-python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv $MODEL_TYPE $MAXINFERBS &
+python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv $MODEL_TYPE $MAXINFERBS $GTCOUNT &
 INFER_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

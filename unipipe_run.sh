@@ -43,19 +43,24 @@ if [ $# -ge 10 -a ${10} != "None" ];then
 fi
 
 if [ $# -ge 11 -a ${11} != "None" ];then
+    GTCOUNT="-gtcount "${11}
+    echo $GTCOUNT
+fi
+
+if [ $# -ge 12 -a ${12} != "None" ];then
     TRAINVALIDFLAG="--validation-training"
     echo $TRAINVALIDFLAG
 fi
 
 
-if [ $# -eq 12 -a ${12} != "None" ];then
-    ratio=${12}
+if [ $# -eq 13 -a ${13} != "None" ];then
+    ratio=${13}
     RATIO="-iprfrac "${ratio}
     echo $RATIO
 fi
 
-if [ $# -eq 13 ];then
-    inferbsfactor=${13}
+if [ $# -eq 14 ];then
+    inferbsfactor=${14}
     INFFACT="-inffac "${inferbsfactor}
     echo $INFFACT
 fi
@@ -73,7 +78,7 @@ set -x
 
 EXP_SCRIPT=unipipe.py
 
-python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS $MAXINFERBS -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
+python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS $MAXINFERBS -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv $GTCOUNT &
 UNIPIPE_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &
