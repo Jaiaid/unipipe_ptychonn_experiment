@@ -53,7 +53,7 @@ if __name__ == "__main__":
     bar_width = 0.8 / num_systems
     x = np.arange(num_params)
 
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+    fig, ax = plt.subplots(figsize=(4, 2.4))
 
     for i, sys in enumerate(SYSTEM_NAME_LIST):
         offsets = x + i * bar_width
