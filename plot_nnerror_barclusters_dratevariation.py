@@ -83,7 +83,7 @@ if __name__ == "__main__":
     fig.savefig("{0}.pdf".format(args.output_file_basename), format="pdf", dpi=600, bbox_inches="tight")
 
 
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+    fig, ax = plt.subplots(figsize=(4, 2.4))
 
     for i, sys in enumerate(SYSTEM_NAME_LIST):
         offsets = x + i * bar_width
