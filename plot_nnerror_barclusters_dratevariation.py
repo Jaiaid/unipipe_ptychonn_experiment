@@ -16,6 +16,7 @@ data_dir/
 
 import os
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import argparse
 
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     bar_width = 0.8 / num_systems
     x = np.arange(num_params)
 
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+    fig, ax = plt.subplots(figsize=(4, 2.4))
 
     for i, sys in enumerate(SYSTEM_NAME_LIST):
         offsets = x + i * bar_width
@@ -70,10 +71,13 @@ if __name__ == "__main__":
         )
 
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([param for param in DATARATE_LIST])
-    ax.set_ylabel("MSE Error")
-    ax.set_xlabel("Data Rate (sample/sec)")
-    ax.legend()
+    ax.set_xticklabels([param for param in DATARATE_LIST], fontsize=10, fontweight="bold")
+    ax.set_yticks(np.arange(0, 1.4, 0.2))
+    ax.set_yticklabels(np.arange(0, 1.4, 0.2), fontsize=10, fontweight="bold")
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:.2f}"))
+    ax.set_ylabel("MSE Error", fontsize=10, fontweight="bold")
+    ax.set_xlabel("Data Rate (req./sec.)", fontsize=10, fontweight="bold")
+    ax.legend(frameon=False, loc="upper center", ncol=2, columnspacing=0.5, prop={"size": 9, "weight": "bold"})
 
     fig.savefig("{0}.png".format(args.output_file_basename), dpi=600, bbox_inches="tight")
     fig.savefig("{0}.pdf".format(args.output_file_basename), format="pdf", dpi=600, bbox_inches="tight")
@@ -90,10 +94,13 @@ if __name__ == "__main__":
         )
 
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([param for param in DATARATE_LIST])
-    ax.set_ylabel("MSE Error")
-    ax.set_xlabel("Data Rate (sample/sec)")
-    # ax.legend()
+    ax.set_xticklabels([param for param in DATARATE_LIST], fontsize=10, fontweight="bold")
+    ax.set_yticks(np.arange(0, 1.4, 0.2))
+    ax.set_yticklabels(np.arange(0, 1.4, 0.2), fontsize=10, fontweight="bold")
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:.2f}"))
+    ax.set_ylabel("MSE Error", fontsize=10, fontweight="bold")
+    ax.set_xlabel("Data Rate (req./sec.)", fontsize=10, fontweight="bold")
+    ax.legend(frameon=False, loc="upper center", ncol=2, columnspacing=0.5, prop={"size": 9, "weight": "bold"})
 
     fig.savefig("{0}_whole.png".format(args.output_file_basename), dpi=600, bbox_inches="tight")
     fig.savefig("{0}_whole.pdf".format(args.output_file_basename), format="pdf", dpi=600, bbox_inches="tight")

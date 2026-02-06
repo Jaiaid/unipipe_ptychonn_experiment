@@ -23,7 +23,7 @@ from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
-DATARATE_LIST = [1000, 2000, 3000, 4000, 5000]
+DATARATE_LIST = [1000, 2000, 3000, 4000, 5000]# [6000, 7000, 8000, 9000, 10000] #[1000, 2000, 3000, 4000, 5000]
 
 
 if __name__ == "__main__":
@@ -65,10 +65,13 @@ if __name__ == "__main__":
         )
 
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([param for param in DATARATE_LIST])
-    ax.set_ylabel("Miss Rate(%)")
-    ax.set_xlabel("Data Rate (sample/sec)")
-    ax.legend()
+    ax.set_xticklabels([param for param in DATARATE_LIST], fontsize=10, fontweight="bold")
+    ax.set_yticks(np.arange(0, 90, 20))
+    ax.set_yticklabels(np.arange(0, 90, 20), fontsize=10, fontweight="bold")
+    ax.set_ylabel("Miss Rate(%)", fontsize=10, fontweight="bold")
+    ax.set_ylim([0, 80])
+    ax.set_xlabel("Data Rate (req./sec.)", fontsize=10, fontweight="bold")
+    ax.legend(frameon=False, ncol=1, prop={"size": 9, "weight": "bold"}, columnspacing=0.5)
 
     fig.savefig("{0}.png".format(args.output_file_basename), dpi=600, bbox_inches="tight")
     fig.savefig("{0}.pdf".format(args.output_file_basename), format="pdf", dpi=600, bbox_inches="tight")
