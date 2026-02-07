@@ -11,3 +11,9 @@ SYSTEM_NAME_TO_HATCH_DICT = {
 CSV_FILENAME_FMT = "{0}_5_{1}_{2}_{3}.csv"
 SYSSTAT_FILENAME_FMT = "{0}_sysstat_5_{1}_{2}_{3}.csv"
 CSV_FILENAME_FMT_TRANSMISSION = "{0}_transmission_state_5_{1}_{2}_{3}.csv"
+
+FIGSIZE = (4, 2.4)
+LEGEND_PROP = {"size": 9, "weight": "bold"}
+LEGEND_COLSPACING = 0.5
+AXLABEL_KW = {"fontsize": 10, "fontweight": "bold"} 
+YTICK_LABEL_KW = {"fontsize": 10, "fontweight": "bold" }
