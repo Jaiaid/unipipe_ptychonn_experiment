@@ -511,7 +511,17 @@ if __name__ == "__main__":
     # to give producer time to put first data
     # time.sleep(1/args.datarate)
     time_list = []
+    
+    # start the helper output process, this is time consuming so start it before synchronizing with producer
+    # start the process to write inference results
+    data_queue = torch.multiprocessing.Queue(maxsize=10000)
+    stat_queue = torch.multiprocessing.Queue(maxsize=35000)
 
+    output_process = torch.multiprocessing.Process(
+        target=ptychonn.process_funcs.write_inference_results,
+        args=(data_queue, stat_queue)
+    )
+    output_process.start()
 
     # signal producer that done, needed if initiation become expensive
     ptychonn.ipc.signal_producer_from_ML_surrogate()
@@ -523,17 +533,6 @@ if __name__ == "__main__":
         start_timestamp=start_time, datarate=args.datarate,
         deadline_sec=deadline_sec, stream_alive_time=total_runtime
     )
-
-    # start the helper output process
-    # start the process to write inference results
-    data_queue = torch.multiprocessing.Queue(maxsize=10000)
-    stat_queue = torch.multiprocessing.Queue(maxsize=int(total_runtime*args.datarate))
-
-    output_process = torch.multiprocessing.Process(
-        target=ptychonn.process_funcs.write_inference_results,
-        args=(data_queue, stat_queue)
-    )
-    output_process.start()
 
     # training state controller variable initiation
     logger.log("STARTING ", start_time)

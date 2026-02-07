@@ -354,6 +354,18 @@ if __name__ == "__main__":
         # first interval data is used to pretrain the model
         total_runtime = args.interval_count * args.interval_duration
 
+    
+    # start the helper output process, this is time consuming so start it before synchronizing with producer
+    # start the process to write inference results
+    data_queue = torch.multiprocessing.Queue(maxsize=10000)
+    stat_queue = torch.multiprocessing.Queue(maxsize=35000)
+
+    output_process = torch.multiprocessing.Process(
+        target=ptychonn.process_funcs.write_inference_results,
+        args=(data_queue, stat_queue)
+    )
+    output_process.start()
+
     # wait to synchronize time calculation with produce process
     start_timestamp, total_runtime = ptychonn.ipc.producer_transmit_wait()
     current_time = start_timestamp
@@ -363,17 +375,6 @@ if __name__ == "__main__":
         start_timestamp=start_timestamp, datarate=args.datarate,
         deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
     )
-
-    # start the helper output process
-    # start the process to write inference results
-    data_queue = torch.multiprocessing.Queue(maxsize=10000)
-    stat_queue = torch.multiprocessing.Queue(maxsize=int(total_runtime*args.datarate))
-
-    output_process = torch.multiprocessing.Process(
-        target=ptychonn.process_funcs.write_inference_results,
-        args=(data_queue, stat_queue)
-    )
-    output_process.start()
 
     total_consumed = 0
     # to check which ipr iteration is finished, to identify appropriate model directory

@@ -279,6 +279,18 @@ if __name__ == "__main__":
         # first interval data is used to pretrain the model
         total_runtime = args.interval_count * args.interval_duration
 
+    
+    # start the helper output process, this is time consuming so start it before synchronizing with producer
+    # start the process to write inference results
+    data_queue = torch.multiprocessing.Queue(maxsize=10000)
+    stat_queue = torch.multiprocessing.Queue(maxsize=35000)
+
+    output_process = torch.multiprocessing.Process(
+        target=ptychonn.process_funcs.write_inference_results,
+        args=(data_queue, stat_queue)
+    )
+    output_process.start()
+
     # signal producer that done, needed if initiation become expensive
     ptychonn.ipc.signal_producer_from_ML_surrogate()
     # as computation process is not existant, ML process also have to signal producer on behalf of computation
@@ -292,17 +304,6 @@ if __name__ == "__main__":
         start_timestamp=start_timestamp, datarate=args.datarate,
         deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
     )
-
-    # start the helper output process
-    # start the process to write inference results
-    data_queue = torch.multiprocessing.Queue(maxsize=10000)
-    stat_queue = torch.multiprocessing.Queue(maxsize=int(total_runtime*args.datarate))
-
-    output_process = torch.multiprocessing.Process(
-        target=ptychonn.process_funcs.write_inference_results,
-        args=(data_queue, stat_queue)
-    )
-    output_process.start()
 
     total_consumed = 0
     logger.log("PRETRAINED NOIPR CONSUMPTION START", start_timestamp)
