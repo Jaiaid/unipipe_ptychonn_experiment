@@ -50,6 +50,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
     start_time = time.time()
     interval_init_time = time.time()
     interval_remaining_time = time_limit
+    chkpt_process = None
 
     # taken from paper's code
     # if optimizer_objects is None:
@@ -180,16 +181,12 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
         # if tot_loss / (total_iter_count + 1) < previous_loss:
         if True:
             model_save_start_time = time.time()
-            ptychonn.process_funcs.update_saved_model(
-                model=model,
-                path=os.path.join(
-                    "/dev/shm/", chkpt_dir
-                ),
-                name=multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
-            )
-            ptychonn.ipc.create_shm_marker(
-                os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)))
-            
+            # don't create new process before previous one is done
+            data_queue.put((
+                chkpt_dir,
+                copy.deepcopy(model).to("cpu"),
+                next_model
+            ))
             taken_time = time.time() - model_save_start_time
             model_save_spenttime_list.append(taken_time)
 
@@ -308,14 +305,14 @@ if __name__ == "__main__":
     train_datareader = ptychonn.shm_datareader.SHMTrainDataReader()
 
     # warmup run
-    warmup_start_time = time.time()
-    metrics, epoch_count = multicontext_train(
-        model, train_datareader, epoch_count=3,
-        trainbs=1, datarate=args.datarate, deadline_sec=args.deadline/1000,
-        traindatalist_fileobj=traindatalist_file, ipriteration_no=0,
-        chkpt_dir="MODEL_MULTICONTEXT_dummy",
-        logger=logger, time_limit=args.deadline/1000)
-    logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
+    # warmup_start_time = time.time()
+    # metrics, epoch_count = multicontext_train(
+    #     model, train_datareader, epoch_count=3,
+    #     trainbs=1, datarate=args.datarate, deadline_sec=args.deadline/1000,
+    #     traindatalist_fileobj=traindatalist_file, ipriteration_no=0,
+    #     chkpt_dir="MODEL_MULTICONTEXT_dummy",
+    #     logger=logger, time_limit=args.deadline/1000)
+    # logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
     # training state controller variable initiation
     cur_ipriteration = -1
@@ -337,6 +334,24 @@ if __name__ == "__main__":
         # first interval data is used to pretrain the model
         total_runtime = args.interval_count * args.interval_duration
     
+    # # It's best practice to use 'spawn' as the start method for PyTorch multiprocessing
+    # torch.set_num_threads(1)
+    # try:
+    #     torch.multiprocessing.set_start_method('spawn', force=True)
+    # except RuntimeError:
+    #     pass
+
+    # start the checkpointing process to save model periodically
+    # without incurring compute stall
+    data_queue = torch.multiprocessing.Queue(maxsize=100)
+
+    checkpointing_process = torch.multiprocessing.Process(
+        target=ptychonn.process_funcs.checkpointing_process_function,
+        args=(data_queue,)
+    )
+    # so that it will close if main process is closed
+    checkpointing_process.start()
+
     # signal producer that done, needed if initiation become expensive
     # doing it only for training process assuming inference initiation is faster
     # needs a better approach
@@ -361,7 +376,7 @@ if __name__ == "__main__":
         # as IPR will keep running for data from interval 0 also (for which model is already trained)
         # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
         # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
-        ipr_training_time_start = time.time()
+        ipr_training_time_start = start_time + (cur_ipriteration+1)*ipriter_time_limit
         
         if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
             cur_ipriteration += 1
@@ -425,3 +440,10 @@ if __name__ == "__main__":
     # )
     
     logger.persist(args.csvlog_file[:-4] + "_train.log")
+    checkpointing_process.terminate()
+
+    # doing at last, in case it hangs we will still have the log
+    # terminate the output process by putting sentinel
+    data_queue.put((None, None, None, None))
+    checkpointing_process.join()
+

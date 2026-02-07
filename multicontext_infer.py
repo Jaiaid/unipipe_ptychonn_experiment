@@ -64,7 +64,7 @@ def multicontext_inferonly_process(
     forward_pass_arrival_time = start_timestamp
     infer_count = 0
     inference_iter_count = 0
-    ipriteration_no = 0
+    ipriteration_no = cur_ipriteration
 
     # which directory to load model from at the beginning
     chkpt_dir = multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(max(cur_ipriteration-1, 0))
@@ -78,12 +78,14 @@ def multicontext_inferonly_process(
         logger.log("MODEL UPDATE TO", chkpt_dir, next_model)
         # print("inference process is swapping model, ", os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
         model_load_time = time.time()
-        model = torch.load(
-            os.path.join(
-                "/dev/shm",
-                chkpt_dir,
-                multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
-            ), weights_only=False
+        model.load_state_dict(
+            torch.load(
+                os.path.join(
+                    "/dev/shm",
+                    chkpt_dir,
+                    multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
+                ), weights_only=True
+            )
         )
         model.to("cuda")
         taken_time = time.time() - model_load_time
@@ -94,6 +96,12 @@ def multicontext_inferonly_process(
     while time.time() - start_timestamp < time_limit and total_consumed < len(teststream):
         # measure how much in the queue based on time
         infer_count = 0
+
+        if not stat_queue.empty():
+            infer_delay_miss, forward = stat_queue.get() 
+            INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += infer_delay_miss
+            teststream.reposition(forward=forward)
+
         inferbs = min(
             MAX_INFER_BATCH_SIZE, 
             int(math.floor(datarate * (time.time() - last_consumption_time)))
@@ -145,39 +153,47 @@ def multicontext_inferonly_process(
             pred_amps_cpu_np = pred_amps.cpu().detach().numpy()
             pred_ph_cpu_np = pred_phs.cpu().detach().numpy()
             # print(pred_amps.shape, pred_phs.shape)
-            for i in range(infer_count):
-                # inference is done so remove the data from shm
-                # as inference will be done only once
-                # so delete
-                try:
-                    ptychonn.ipc.remove_shm(
-                        ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
-                    )
+            data_queue.put((
+                inferidxlist,
+                pred_amps_cpu_np[:infer_count],
+                pred_ph_cpu_np[:infer_count],
+                ipriteration_no
+            ))
+            for i in range(len(inferidxlist)):
+                inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+            # for i in range(infer_count):
+            #     # inference is done so remove the data from shm
+            #     # as inference will be done only once
+            #     # so delete
+            #     try:
+            #         ptychonn.ipc.remove_shm(
+            #             ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
+            #         )
 
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_ph_cpu_np[i]
-                    )
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_amps_cpu_np[i]
-                    )
+            #         ptychonn.ipc.create_shm_data(
+            #             os.path.join(
+            #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+            #                 ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+            #             ),
+            #             pred_ph_cpu_np[i]
+            #         )
+            #         ptychonn.ipc.create_shm_data(
+            #             os.path.join(
+            #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+            #                 ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+            #             ),
+            #             pred_amps_cpu_np[i]
+            #         )
                 
-                    inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                except FileNotFoundError as ex:
-                    infer_delay_missed += 1
+            #         inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+            #     except FileNotFoundError as ex:
+            #         infer_delay_missed += 1
                     
-                    INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
+            #         INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
             
-            logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
-            if infer_delay_missed > 0:
-                teststream.reposition(forward=True)
+            # logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
+            # if infer_delay_missed > 0:
+            #     teststream.reposition(forward=True)
 
         # update total missed count
         logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
@@ -200,12 +216,14 @@ def multicontext_inferonly_process(
             
             model_load_time = time.time()
             # print("inference process is swapping model, ", os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)))
-            model = torch.load(
-                os.path.join(
-                    "/dev/shm",
-                    chkpt_dir,
-                    multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
-                ), weights_only=False
+            model.load_state_dict(
+                torch.load(
+                    os.path.join(
+                        "/dev/shm",
+                        chkpt_dir,
+                        multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
+                    ), weights_only=True
+                )
             )
             model.to("cuda")
             taken_time = time.time() - model_load_time
@@ -345,6 +363,18 @@ if __name__ == "__main__":
         start_timestamp=start_timestamp, datarate=args.datarate,
         deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
     )
+
+    # start the helper output process
+    # start the process to write inference results
+    data_queue = torch.multiprocessing.Queue(maxsize=10000)
+    stat_queue = torch.multiprocessing.Queue(maxsize=int(total_runtime*args.datarate))
+
+    output_process = torch.multiprocessing.Process(
+        target=ptychonn.process_funcs.write_inference_results,
+        args=(data_queue, stat_queue)
+    )
+    output_process.start()
+
     total_consumed = 0
     # to check which ipr iteration is finished, to identify appropriate model directory
     # model directory is named based on finished ipr iteration number
@@ -397,13 +427,20 @@ if __name__ == "__main__":
         skip_line=args.skip_line_pretrained, large_dataset=args.large_dataset
     )
 
+    # terminate the output process
+    output_process.terminate()
+
     with open(args.csvlog_file, "w") as fout:
         # amp error, ph error, nn amp error, nn ph error
         fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
 
     inferdatalist_file.close()
 
+    # receive the stat queue from output process
+    while not stat_queue.empty():
+        INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += stat_queue.get()[0]
     logger.log("INFER DELAY MISS COUNT", INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT)
+
     logger.log(
         "MODEL RESTORE OVERHEADS", model_load_spenttime_list
     )
@@ -416,3 +453,8 @@ if __name__ == "__main__":
 
     logger.persist(args.csvlog_file[:-4] + "_infer.log")
     print("Read Mismatch Count", read_mismatch_count)
+
+    # doing at last, in case it hangs we will still have the log
+    # terminate the output process by putting sentinel
+    data_queue.put((None, None, None, None))
+    output_process.join()
