@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
-from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT
+from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT, FIGSIZE, AXLABEL_KW, YTICK_LABEL_KW, LEGEND_COLSPACING, LEGEND_PROP
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
@@ -55,8 +55,8 @@ if __name__ == "__main__":
                 if gap_values:
                     avg_gap = np.mean(gap_values)
                     fluctuation = np.std(gap_values)
-                    fluctuations[param].append((avg_gap-np.min(gap_values), np.max(gap_values)-avg_gap))
-                    results[param].append(avg_gap)
+                    fluctuations[param].append(((avg_gap-np.min(gap_values))*1000, (np.max(gap_values)-avg_gap)*1000))
+                    results[param].append(avg_gap*1000)
                 else:
                     fluctuations[param].append((0, 0))
                     results[param].append(0)  # or handle missing data appropriately
@@ -67,21 +67,33 @@ if __name__ == "__main__":
     bar_width = 0.8 / num_systems
     x = np.arange(num_params)
     
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+    fig, ax = plt.subplots(figsize=FIGSIZE)
     
     # plot bars and error bars
     for i, sys in enumerate(SYSTEM_NAME_LIST):
         sys_values = [results[param][i] for param in DATARATE_LIST]
         sys_fluctuations = [fluctuations[param][i] for param in DATARATE_LIST]
         sys_error = np.array([[low, high] for low, high in sys_fluctuations]).T
-        ax.bar(x + i * bar_width, sys_values, yerr=sys_error, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
+        ax.bar(
+            x + i * bar_width, sys_values, yerr=sys_error, width=bar_width,
+            label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys],
+            edgecolor='black', capsize=2.5
+        )
     
-    ax.set_xlabel('Data Rate (req/s)')
-    ax.set_ylabel('Avg. Invocation Gap (s)')
+    ax.set_xlabel('Data Rate (req./sec.)', **AXLABEL_KW)
+    ax.set_ylabel('Invocation Gap (ms)', **AXLABEL_KW)
+
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([str(param) for param in DATARATE_LIST])
-    ax.legend()
+    ax.set_xticklabels([str(param) for param in DATARATE_LIST], **YTICK_LABEL_KW)
+
+    ax.set_ylim([0, 70])
+    ax.set_yticks(np.arange(0, 60, 10))
+    ax.set_yticklabels(np.arange(0, 60, 10), **YTICK_LABEL_KW)
+
+    ax.legend(frameon=False, loc="upper center", columnspacing=LEGEND_COLSPACING, prop=LEGEND_PROP, ncol=2)
     
     output_path = f"{args.output_file_basename}.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
+    output_path = f"{args.output_file_basename}.pdf"
+    fig.savefig(output_path, format="pdf", dpi=600, bbox_inches="tight")
 

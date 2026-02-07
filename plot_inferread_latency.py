@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
-from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT
+from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT, FIGSIZE, LEGEND_COLSPACING, LEGEND_PROP, AXLABEL_KW, YTICK_LABEL_KW
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
@@ -83,18 +83,24 @@ if __name__ == "__main__":
     x = np.arange(num_params)
     
     # inferread plot
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+    fig, ax = plt.subplots(figsize=FIGSIZE)
     
     for i, sys in enumerate(SYSTEM_NAME_LIST):
         sys_values = [results_sw[param][i] for param in DATARATE_LIST]
         sys_fluctuations = np.array([fluctuations_sw[param][i] for param in DATARATE_LIST]).T
         ax.bar(x + i * bar_width, sys_values, yerr=sys_fluctuations, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
     
-    ax.set_xlabel('Data Rate (req/s)')
-    ax.set_ylabel('Avg. Inference Read Latency (s)')
+    ax.set_xlabel('Data Rate (req/s)', **AXLABEL_KW)
+    ax.set_ylabel('Infer. Read Latency (ms)', **AXLABEL_KW)
+
+    ax.set_ylim([0, 40])
+    ax.set_yticks(np.arange(0, 35, 5))
+    ax.set_yticklabels(np.arange(0, 35, 5), **YTICK_LABEL_KW)
+
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([str(param) for param in DATARATE_LIST])
-    ax.legend()
+    ax.set_xticklabels([str(param) for param in DATARATE_LIST], **YTICK_LABEL_KW)
+    
+    ax.legend(frameon=False, columnspacing=LEGEND_COLSPACING, prop=LEGEND_PROP, loc="upper center", ncol=2)
     
     output_path = f"{args.output_file_basename}.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
@@ -106,13 +112,21 @@ if __name__ == "__main__":
         sys_values = [results_bs[param][i] for param in DATARATE_LIST]
         sys_fluctuations = [fluctuations_bs[param][i] for param in DATARATE_LIST]
         sys_fluctuations = np.array([(min_val, max_val) for min_val, max_val in sys_fluctuations]).T
-        ax.bar(x + i * bar_width, sys_values, yerr=sys_fluctuations, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
+        ax.bar(x + i * bar_width, sys_values, capsize=2.5, yerr=sys_fluctuations, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
 
-    ax.set_xlabel('Data Rate (req/s)')
-    ax.set_ylabel('Avg. Batch Size (requests)')
+    ax.set_xlabel('Data Rate (req./sec.)', **AXLABEL_KW)
+    ax.set_ylabel('Batch Size (requests)', **AXLABEL_KW)
+
+    ax.set_ylim([0, 40])
+    ax.set_yticks(np.arange(0, 35, 5))
+    ax.set_yticklabels(np.arange(0, 35, 5), **YTICK_LABEL_KW)
+
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([str(param) for param in DATARATE_LIST])
-    ax.legend()
+    ax.set_xticklabels([str(param) for param in DATARATE_LIST], **YTICK_LABEL_KW)
+    
+    ax.legend(frameon=False, columnspacing=LEGEND_COLSPACING, prop=LEGEND_PROP, loc="upper center", ncol=2)
     
     output_path = f"{args.output_file_basename}_bs.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
+    output_path = f"{args.output_file_basename}_bs.pdf"
+    fig.savefig(output_path, format="pdf", dpi=600, bbox_inches="tight")
