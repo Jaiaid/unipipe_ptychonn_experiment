@@ -8,6 +8,7 @@ ROOTDIR=.
 GTDEFAULT= #--gtdefault
 CKPTTEST=--allckpttest
 CONSTANTTRAINBS= #--constant-trainbs
+TIMEOUTSECONDS=200
 pushd $ROOTDIR
 
 c=$1
@@ -44,7 +45,7 @@ set -x
 
 EXP_SCRIPT=pretrained_noipr.py
 
-python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -iprt ${iprt} -csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE $MAXINFERBS&
+timeout $TIMEOUTSECONDS python3 $EXP_SCRIPT $GTDEFAULT --datarate ${rate} --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -skipline $skipline -iprt ${iprt} -csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE $MAXINFERBS&
 PRETRAIN_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

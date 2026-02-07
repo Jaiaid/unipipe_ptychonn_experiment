@@ -8,6 +8,8 @@ ROOTDIR=.
 GTDEFAULT= #--gtdefault
 CKPTTEST=--allckpttest
 CONSTANTTRAINBS= #--constant-trainbs
+TIMEOUTSECONDS=200 #--timeout-seconds 300
+
 pushd $ROOTDIR
 
 TRAIN_SCRIPT="multicontext_train.py"
@@ -60,11 +62,11 @@ set -x
 
 # deadlinemsec=$((1000*$accumulationallow/$rate))
 
-python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE $GTCOUNT &
+timeout $TIMEOUTSECONDS python3 $TRAIN_SCRIPT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -idur ${dur} -icount ${c} --csvlog tmp.csv $MODEL_TYPE $DATASET_TYPE $GTCOUNT &
 TRAIN_PID=$!
 
 # it needs dataset type information as it will 
-python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv $MODEL_TYPE $MAXINFERBS $GTCOUNT &
+timeout $TIMEOUTSECONDS python3 $INFER_SCRIPT $GTDEFAULT --datarate ${rate} $IPRRATE --deadline ${deadlinemsec} -skipline $skipline -idur ${dur} -icount ${c} $DATASET_TYPE $BSARG -csvlog tmp.csv $MODEL_TYPE $MAXINFERBS $GTCOUNT &
 INFER_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &

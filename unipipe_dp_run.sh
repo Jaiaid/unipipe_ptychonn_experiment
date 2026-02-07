@@ -8,6 +8,7 @@ ROOTDIR=.
 GTDEFAULT= #--gtdefault
 CKPTTEST=--allckpttest
 CONSTANTTRAINBS= #--constant-trainbs
+TIMEOUTSECONDS=200
 pushd $ROOTDIR
 
 c=$1
@@ -79,7 +80,7 @@ set -x
 
 EXP_SCRIPT=unipipe_dp.py
 
-python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS $GTCOUNT $MAXINFERBS -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
+timeout $TIMEOUTSECONDS python3 $EXP_SCRIPT $GTDEFAULT $CKPTTEST $CONSTANTTRAINBS --datarate ${rate} -skipline $skipline $IPRRATE $DATASET_TYPE $MODEL_TYPE $RATIO $INFFRAC $TRAINVALIDFLAG $TRAINBS $GTCOUNT $MAXINFERBS -constbs --deadline ${deadlinemsec} -idur ${dur} -icount ${c} -csvlog tmp.csv &
 UNIPIPE_PID=$!
 
 python3 monitor.py 0 tmp_sysstat.csv &
