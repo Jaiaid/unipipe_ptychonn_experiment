@@ -135,7 +135,7 @@ if __name__ == "__main__":
     ax.bar(x, chkpt_mean, width=bar_width, label='Checkpoint', bottom=fwpass_mean+bwpass_mean, color='lightsalmon', edgecolor='black')
     # ax.bar(x, ctxswitch_mean, width=bar_width, label='Context Switch', bottom=fwpass_mean+bwpass_mean+chkpt_mean, color='lightgray', edgecolor='black')
 
-    ax.set_ylabel("Latency (ms)', **AXLABEL_KW)
+    ax.set_ylabel('Latency (ms)', **AXLABEL_KW)
     ax.set_xticks(x)
     ax.set_ylim([0, 40])
     ax.set_yticks(np.arange(0, 30, 5))
