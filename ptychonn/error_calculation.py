@@ -21,8 +21,8 @@ def calc_error(amps, phs, true_amp, true_ph, point_size, overlap):
     
     # find the nearest side length which will make amps a grid of 64x64 images
     # this is to arrange the images in a grid and compare with ground truth
-    test_side_w = amps.shape[0]
-    test_side_h = 1
+    test_side_w = amps.shape[1]
+    test_side_h = amps.shape[0]
 
     true_amp = true_amp.reshape(test_side_h, test_side_w, 64, 64)
     true_ph = true_ph.reshape(test_side_h, test_side_w, 64, 64)
@@ -61,10 +61,11 @@ def calc_error(amps, phs, true_amp, true_ph, point_size, overlap):
     # true_ph = Y_phi_test.reshape(NLTEST,NLTEST,64,64)
     # print(stitched_amp_down.shape, stitched_phase_down.shape,  true_amp[:,:,32,32].shape,  true_ph[:,:,32,32].shape)
 
-    return mse(stitched_amp_down, true_amp[:,:,32,32]), mse(stitched_phase_down, true_ph[:,:,32,32])
+    return mse(stitched_amp_down, true_amp[:,:,32,32]), mse(stitched_phase_down, true_ph[:,:,32,32]), mse(stitched_amp_down, true_amp[:,:,32,32]), mse(stitched_phase_down, true_ph[:,:,32,32])
+
 
 def postsimulation_error_calc(skip_line=0, large_dataset=False) -> Tuple[float, float]:
-    void_image = np.ndarray(shape=(parameters.H, parameters.W), dtype=np.float64)
+    void_image = np.zeros(shape=(parameters.H, parameters.W), dtype=np.float64)
     # first search for IPR generated images
     # for them error will be zero
     ipr_genidx_list = []
@@ -78,8 +79,18 @@ def postsimulation_error_calc(skip_line=0, large_dataset=False) -> Tuple[float, 
     # first load the ground truth data
     if not large_dataset:
         Y_I, Y_ph = dataset.get_gtdata(skip_line=skip_line)
+        # Y_I.reshape(parameters.DIFFRLINE_L - skip_line, parameters.SCANPOINT_L, parameters.H, parameters.W)
+        # Y_ph.reshape(parameters.DIFFRLINE_L - skip_line, parameters.SCANPOINT_L, parameters.H, parameters.W)
     else:
         Y_I, Y_ph = dataset.get_large_gtdata(skip_line=skip_line)
+        # Y_I.reshape(parameters.DIFFRLINE_L, parameters.SCANPOINT_L, parameters.H, parameters.W)
+        # Y_ph.reshape(parameters.DIFFRLINE_L, parameters.SCANPOINT_L, parameters.H, parameters.W)
+
+    gti_min = np.min(Y_I)
+    gtph_min = np.min(Y_ph)
+    gti_max = np.max(Y_I)
+    gtph_max = np.max(Y_ph)
+    print(gti_min, gti_max, gtph_min, gtph_max)
 
     # now calculate error for actually inferred data
     mse_amp_errorlist = []
@@ -110,8 +121,15 @@ def postsimulation_error_calc(skip_line=0, large_dataset=False) -> Tuple[float, 
                 parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(dataidx)
             ))
 
-            mse_amp = torch.mean(torch.tensor((Y_I[dataidx]-amp_data.reshape(parameters.H,parameters.W))**2)).item()
-            mse_ph = torch.mean(torch.tensor((Y_ph[dataidx]-ph_data.reshape(parameters.H,parameters.W))**2)).item()
+            # norm_Y_I = (Y_I[dataidx] - gti_min)/(gti_max - gti_min)
+            # norm_Y_ph = (Y_ph[dataidx] - gtph_min)/(gtph_max - gtph_min)
+            # norm_amp_data = (amp_data - gti_min)/(gti_max - gti_min)
+            # norm_ph_data = (ph_data - gtph_min)/(gtph_max - gtph_min)
+
+            # mse_amp = torch.mean(torch.tensor((norm_Y_I-norm_amp_data.reshape(parameters.H,parameters.W))**2)).item()
+            # mse_ph = torch.mean(torch.tensor((norm_Y_ph-norm_ph_data.reshape(parameters.H,parameters.W))**2)).item()
+            mse_amp = torch.mean(torch.tensor((Y_I[dataidx, 32, 32]-amp_data.reshape(parameters.H,parameters.W)[32, 32])**2)).item()
+            mse_ph = torch.mean(torch.tensor((Y_ph[dataidx,32, 32]-ph_data.reshape(parameters.H,parameters.W)[32, 32])**2)).item()
 
             mse_amp_errorlist.append(mse_amp)
             mse_ph_errorlist.append(mse_ph)
@@ -123,10 +141,44 @@ def postsimulation_error_calc(skip_line=0, large_dataset=False) -> Tuple[float, 
                 print(np.mean(Y_ph[dataidx]), np.mean(ph_data.reshape(parameters.H,parameters.W)))
         else:
             # we got this constant from observing spread of data in ground truth
-            mse_amp_errorlist.append(1)
-            mse_ph_errorlist.append(6)
-            # mse_amp_errorlist.append(mse(Y_I[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
-            # mse_amp_errorlist.append(mse(Y_ph[i].reshape(-1).astype(np.float64), void_image.reshape(-1)))
+            # mse_amp_errorlist.append(1)
+            # mse_ph_errorlist.append(1)
+            mse_amp_errorlist.append(mse(Y_I[dataidx].reshape(-1).astype(np.float64), void_image.reshape(-1)))
+            mse_amp_errorlist.append(mse(Y_ph[dataidx].reshape(-1).astype(np.float64), void_image.reshape(-1)))
+    
+    print(len(mse_amp_errorlist), len(mse_ph_errorlist), len(mse_nn_amp_errorlist), len(mse_nn_ph_errorlist))
+    print(sum(mse_amp_errorlist)/len(mse_amp_errorlist), sum(mse_ph_errorlist)/len(mse_ph_errorlist), sum(mse_nn_amp_errorlist)/len(mse_nn_amp_errorlist), sum(mse_nn_ph_errorlist)/len(mse_nn_ph_errorlist))
 
+
+    # # normalize within the range of served requests error
+    # nn_error_amp_min = 0 # np.min(mse_nn_amp_errorlist)
+    # nn_error_amp_max = np.max(mse_nn_amp_errorlist)
+    # nn_error_amp_avg = np.mean(mse_nn_amp_errorlist)
+    # nn_error_ph_min = 0 #np.min(mse_nn_ph_errorlist)
+    # nn_error_ph_max = np.max(mse_nn_ph_errorlist)
+    # nn_error_ph_avg = np.mean(mse_nn_ph_errorlist)
+
+    # print("NN error amp min max", nn_error_amp_min, nn_error_amp_max, (nn_error_amp_avg-nn_error_amp_min)/(nn_error_amp_max-nn_error_amp_min))
+    # print("NN error ph min max", nn_error_ph_min, nn_error_ph_max, (nn_error_ph_avg-nn_error_ph_min)/(nn_error_ph_max-nn_error_ph_min))
+
+    # mse_nn_amp_errorlist = []
+    # mse_nn_ph_errorlist = []
+    # only_nn_idx_count = 0
+    # for dataidx in range(Y_I.shape[0]):
+    #     # first check if generated by IPR
+    #     if ipc.exist_shm(
+    #         os.path.join(
+    #             parameters.SHM_MARKER_NNRES_FOLDER,
+    #             parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(dataidx)
+    #         )):
+
+    #         mse_amp_errorlist[dataidx] = (mse_amp_errorlist[dataidx] - nn_error_amp_min) / (nn_error_amp_max - nn_error_amp_min)
+    #         mse_ph_errorlist[dataidx] = (mse_ph_errorlist[dataidx] - nn_error_ph_min) / (nn_error_ph_max - nn_error_ph_min)
+    #         mse_nn_amp_errorlist.append(mse_amp_errorlist[dataidx])
+    #         mse_nn_ph_errorlist.append(mse_ph_errorlist[dataidx])
+    #         only_nn_idx_count += 1
+
+    # print("Only NN idx count:", only_nn_idx_count)
+    print(sum(mse_amp_errorlist)/len(mse_amp_errorlist), sum(mse_ph_errorlist)/len(mse_ph_errorlist), sum(mse_nn_amp_errorlist)/len(mse_nn_amp_errorlist), sum(mse_nn_ph_errorlist)/len(mse_nn_ph_errorlist))
     print(len(mse_amp_errorlist), len(mse_ph_errorlist), len(mse_nn_amp_errorlist), len(mse_nn_ph_errorlist))
     return sum(mse_amp_errorlist)/len(mse_amp_errorlist), sum(mse_ph_errorlist)/len(mse_ph_errorlist), sum(mse_nn_amp_errorlist)/len(mse_nn_amp_errorlist), sum(mse_nn_ph_errorlist)/len(mse_nn_ph_errorlist)
