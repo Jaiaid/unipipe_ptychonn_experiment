@@ -343,9 +343,15 @@ if __name__ == "__main__":
     # for coordination with ground truth data generation
     # although we are not training here, to make things fair with unipipe
     # we have to generate some ground truth data
-    ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+    # ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+    #     phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
+    #     acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+    # )
+    ipriter_time_limit, _ = ptychonn.perf_model.estimate_unipipe_schedule(
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
-        acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+        acquisition_rate=args.datarate, ground_truth_count=args.gtcount,
+        maxbs = MAX_INFER_BATCH_SIZE, forward_time_per_sample=forward_time_per_sample,
+        backward_time_per_sample=backward_time_per_sample
     )
 
     if args.large_dataset:

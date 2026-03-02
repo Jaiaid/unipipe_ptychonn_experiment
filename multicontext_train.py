@@ -34,6 +34,8 @@ import multicontext_parameters
 # for logging
 import logfast.fastlogger
 
+
+global MAX_INFER_BATCH_SIZE
 # for checkpoint overhead experiment
 model_save_spenttime_list = []
 
@@ -261,13 +263,13 @@ if __name__ == "__main__":
     arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
     arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
     arg_parser.add_argument("--gtcount", "-gtcount", type=int, required=False, help="how many ground truth will be consumed by phase retrieval process", default=1)
+    arg_parser.add_argument("--maxinfer-bs", "-maxinferbs", type=int, default=None,  help="what is the max infer batch size to use, if not set use perf model to decide")
     
     # get the arguments
     args = arg_parser.parse_args()
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
     # from profiling data
     # forward pass tuned for latency
     # backward pass tuned for throughput
@@ -293,6 +295,8 @@ if __name__ == "__main__":
         optimizer, base_lr=ptychonn.parameters.LR/10, max_lr=ptychonn.parameters.LR,
         step_size_up=step_size, cycle_momentum=False, mode='triangular2')
 
+    _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
 
@@ -314,8 +318,20 @@ if __name__ == "__main__":
     #     logger=logger, time_limit=args.deadline/1000)
     # logger.log("Warmup Run took {0}s".format(time.time() - warmup_start_time))
 
+    forward_time_per_sample = []
+    backward_time_per_sample = []
+    # read profile data to get
+    with open(f"ptychonn/benchmark_{ptychonn.model.get_model_name_from_type(type_name=args.model_type)}_nn_step.csv") as f:
+        for line in f.readlines()[1:]:
+            tokens = line.split()
+            bs = int(tokens[0])
+            fwd_time_per_sample = float(tokens[4])
+            bwd_time_per_sample = float(tokens[6])
+            forward_time_per_sample.append(fwd_time_per_sample)
+            backward_time_per_sample.append(bwd_time_per_sample)
+
     # training state controller variable initiation
-    cur_ipriteration = -1
+    cur_ipriteration = 0
     interipr_model_idx = 0
     deadline_sec = args.deadline / 1000
 
@@ -323,9 +339,25 @@ if __name__ == "__main__":
     # for coordination with ground truth data generation
     # although we are not training here, to make things fair with unipipe
     # we have to generate some ground truth data
-    ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+    # ipriter_time_limit = ptychonn.perf_model.estimate_T_IPR(
+    #     phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
+    #     acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+    # )
+    global MAX_INFER_BATCH_SIZE
+    if args.maxinfer_bs is not None:
+        MAX_INFER_BATCH_SIZE = args.maxinfer_bs
+        logger.log("SET MAXBS", MAX_INFER_BATCH_SIZE)
+    else:
+        MAX_INFER_BATCH_SIZE = ptychonn.perf_model.SystemTuner.calc_deadline_aware_maxthpt_bs(
+            forward_time_per_sample, deadline_sec, args.datarate
+        )
+        logger.log("TUNED MAXBS", MAX_INFER_BATCH_SIZE)
+
+    ipriter_time_limit, _ = ptychonn.perf_model.estimate_unipipe_schedule(
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
-        acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
+        acquisition_rate=args.datarate, ground_truth_count=args.gtcount,
+        maxbs=MAX_INFER_BATCH_SIZE, forward_time_per_sample=forward_time_per_sample,
+        backward_time_per_sample=backward_time_per_sample
     )
 
     if args.large_dataset:
@@ -343,6 +375,7 @@ if __name__ == "__main__":
 
     # start the checkpointing process to save model periodically
     # without incurring compute stall
+    torch.multiprocessing.set_start_method('spawn')
     data_queue = torch.multiprocessing.Queue(maxsize=100)
 
     checkpointing_process = torch.multiprocessing.Process(
@@ -376,10 +409,9 @@ if __name__ == "__main__":
         # as IPR will keep running for data from interval 0 also (for which model is already trained)
         # it will indicate ground truth is gnereted for some data and IPR has moved from that portion
         # which means completion of SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration+1)
-        ipr_training_time_start = start_time + (cur_ipriteration+1)*ipriter_time_limit
+        ipr_training_time_start = start_time + cur_ipriteration*ipriter_time_limit
         
-        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration + 1)):
-            cur_ipriteration += 1
+        if ptychonn.ipc.exist_shm(ptychonn.parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration)):
             logger.log("IPR ITERATION START", cur_ipriteration)
             # create the directory for saving model
             ptychonn.ipc.create_shm_folder(multicontext_parameters.MULTICONTEXT_IPRITER_MODEL_DIRNAME_FMT.format(cur_ipriteration))
@@ -427,6 +459,7 @@ if __name__ == "__main__":
         # busy wait until time is passed
         while time.time() - ipr_training_time_start < ipriter_time_limit:
             pass
+        cur_ipriteration = int((time.time() - start_time) // ipriter_time_limit)
 
     traindatalist_file.close()
 
