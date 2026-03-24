@@ -153,11 +153,11 @@ schedule_entry_matrix schedule_solver(
                     // }
                     // we do not consider the case that deadline is missed
                     // every processing needs to finish before deadline D of the earliest request from l inference samples
-                    if (time_to_wait_until_l_inference_arrived + EST_FWTIME(t_idx, i_idx, bs_fw_benchmark[t_idx+i_idx-1], bs_bw_benchmark[t_idx-1]) > deadline_sec) {
+                    // if (time_to_wait_until_l_inference_arrived + EST_FWTIME(t_idx, i_idx, bs_fw_benchmark[t_idx+i_idx-1], bs_bw_benchmark[t_idx-1]) > deadline_sec) {
                         // printf("failed deadline for traindatset_size=%d, served_count=%d with iteration minibatchsize train_batch=%d, infer_batch=%d\n", upto_train_size, upto_infer_size, t_idx, i_idx);
                         // exit(0);
-                        break;
-                    }
+                        // break;
+                    // }
 
                     // found at least one feasible way by incorporating new request
                     solution_found = true;
@@ -182,7 +182,6 @@ schedule_entry_matrix schedule_solver(
                 printf("No feasible subsolution found for traindatset_size=%d, served_count=%d\n", traindatset_size, accum_while_gt_generated);
                 printf("Serving every request is not feasible for given parameters\n");
                 printf("Max feasible served requests while generating all GT data: %d\n", upto_infer_size - 1);
-                dp_ara[traindatset_size][accum_while_gt_generated][2] = INF;
                 return dp_ara;
             }
         }

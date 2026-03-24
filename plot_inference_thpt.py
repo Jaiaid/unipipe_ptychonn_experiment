@@ -19,11 +19,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
-from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT
+from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT, FIGSIZE, AXLABEL_KW, YTICK_LABEL_KW, LEGEND_COLSPACING, LEGEND_PROP
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
 DATARATE_LIST = [1000, 2000, 3000, 4000, 5000]
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -39,6 +40,8 @@ if __name__ == "__main__":
     start_timestamp = None
     end_timestamp = None
 
+    infer_delay_miss_count_results = {param: [] for param in DATARATE_LIST}
+
     # infer bs detection state
     infer_bs_regex_match_state = True
 
@@ -52,6 +55,7 @@ if __name__ == "__main__":
                 log_path = os.path.join(args.dir, sys, CSV_FILENAME_FMT.format(sys, DEADLINE_LIST[0], param, IPR_RATE_LIST[0]).replace('.csv', '.log'))
 
             total_consumed = 0
+            infer_delay_miss_count = 0
             start_timestamp = None
             end_timestamp = None
             with open(log_path, 'r') as f:
@@ -62,6 +66,12 @@ if __name__ == "__main__":
                         if match:
                             batch_size = int(match.group(2))
                             infer_bs_regex_match_state = False
+
+                    match = re.search(r'ITERATION TAKES\(sec.\),([\d.eE+-]+)', line)
+                    if match:
+                        gap_value = float(match.group(1))
+                        gap_values.append(batch_size / gap_value)
+                        infer_bs_regex_match_state = True
 
                     match = re.search(r'ITERATION TAKES\(sec.\),([\d.eE+-]+)', line)
                     if match:
@@ -92,6 +102,10 @@ if __name__ == "__main__":
                         total_consumed += int(match.group(2))
                         # print(f"Updated end timestamp: {end_timestamp}, total consumed: {total_consumed}")
 
+                    match = re.search(r'\[(\d+\.\d+)\] INFER DELAY MISS COUNT,(\d+)', line)
+                    if match:
+                        infer_delay_miss_count = int(match.group(2))
+
                 if gap_values:
                     avg_gap = np.mean(gap_values)
                     fluctuation = np.std(gap_values)
@@ -101,16 +115,18 @@ if __name__ == "__main__":
                     fluctuations[param].append((0, 0))
                     results[param].append(0)  # or handle missing data appropriately
 
+                infer_delay_miss_count_results[param].append((total_consumed-infer_delay_miss_count)/(end_timestamp-start_timestamp))
                 total_consumed_results[param].append(total_consumed/(end_timestamp-start_timestamp))
                 # print(sys, param, end_timestamp-start_timestamp, total_consumed, total_consumed/(end_timestamp-start_timestamp))
-
+    
     # Plotting
     num_params = len(DATARATE_LIST)
     num_systems = len(SYSTEM_NAME_LIST)
     bar_width = 0.8 / num_systems
     x = np.arange(num_params)
     
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+    # iter level throughput
+    fig, ax = plt.subplots(figsize=FIGSIZE)
     
     # plot bars and error bars
     for i, sys in enumerate(SYSTEM_NAME_LIST):
@@ -119,16 +135,26 @@ if __name__ == "__main__":
         sys_error = np.array([[low, high] for low, high in sys_fluctuations]).T
         ax.bar(x + i * bar_width, sys_values, yerr=sys_error, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
     
-    ax.set_xlabel('Data Rate (req/s)')
-    ax.set_ylabel('Avg. Inference Thpt. (req/s)')
+    ax.set_xlabel('Data Rate (req./sec.)', AXLABEL_KW)
+    ax.set_ylabel('Avg. Infer. Thpt. (req./sec.)', AXLABEL_KW)
+
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([str(param) for param in DATARATE_LIST])
-    ax.legend()
+    ax.set_xticklabels([str(param) for param in DATARATE_LIST], **YTICK_LABEL_KW)
+
+    ax.set_ylim([500, 5000])
+    ax.set_yticks(np.arange(0, 6000, 1000))
+    ax.set_yticklabels(np.arange(0, 6000, 1000), **YTICK_LABEL_KW)
+
+    ax.legend(frameon=False, columnspacing=LEGEND_COLSPACING, prop=LEGEND_PROP, loc="upper center", ncol=2)
     
     output_path = f"{args.output_file_basename}_iterlevel.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
+    output_path = f"{args.output_file_basename}_iterlevel.pdf"
+    fig.savefig(output_path, format="pdf", dpi=600, bbox_inches="tight")
 
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+
+    # global throughput
+    fig, ax = plt.subplots(figsize=FIGSIZE)
     
     # plot bars and error bars
     for i, sys in enumerate(SYSTEM_NAME_LIST):
@@ -136,12 +162,46 @@ if __name__ == "__main__":
         # print(sys, sys_values)
         ax.bar(x + i * bar_width, sys_values, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
     
-    ax.set_xlabel('Data Rate (req/s)')
-    ax.set_ylabel('Avg. Inference Thpt. (req/s)')
+    ax.set_xlabel('Data Rate (req./sec.)', AXLABEL_KW)
+    ax.set_ylabel('Avg. Infer. Thpt. (req./sec.)', AXLABEL_KW)
+
     ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
-    ax.set_xticklabels([str(param) for param in DATARATE_LIST])
-    ax.legend()
+    ax.set_xticklabels([str(param) for param in DATARATE_LIST], **YTICK_LABEL_KW)
+
+    ax.set_ylim([500, 5000])
+    ax.set_yticks(np.arange(0, 6000, 1000))
+    ax.set_yticklabels(np.arange(0, 6000, 1000), **YTICK_LABEL_KW)
+
+    ax.legend(frameon=False, columnspacing=LEGEND_COLSPACING, prop=LEGEND_PROP, loc="upper center", ncol=2)
     
     output_path = f"{args.output_file_basename}_global.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
+    output_path = f"{args.output_file_basename}_global.pdf"
+    fig.savefig(output_path, format="pdf", dpi=600, bbox_inches="tight")
 
+
+    # goodput 
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    
+    # plot bars and error bars
+    for i, sys in enumerate(SYSTEM_NAME_LIST):
+        sys_values = [infer_delay_miss_count_results[param][i] for param in DATARATE_LIST]
+        # print(sys, sys_values)
+        ax.bar(x + i * bar_width, sys_values, width=bar_width, label=SYSTEM_NAME_TO_LEGEND_DICT[sys], hatch=SYSTEM_NAME_TO_HATCH_DICT[sys], edgecolor='black')
+    
+    ax.set_xlabel('Data Rate (req./sec.)', AXLABEL_KW)
+    ax.set_ylabel('Avg. Infer. Thpt. (req./sec.)', AXLABEL_KW)
+
+    ax.set_xticks(x + bar_width * (num_systems - 1) / 2)
+    ax.set_xticklabels([str(param) for param in DATARATE_LIST], **YTICK_LABEL_KW)
+
+    ax.set_ylim([500, 5000])
+    ax.set_yticks(np.arange(0, 6000, 1000))
+    ax.set_yticklabels(np.arange(0, 6000, 1000), **YTICK_LABEL_KW)
+
+    ax.legend(frameon=False, columnspacing=LEGEND_COLSPACING, prop=LEGEND_PROP, loc="upper center", ncol=2)
+    
+    output_path = f"{args.output_file_basename}_global_goodput.png"
+    fig.savefig(output_path, dpi=600, bbox_inches="tight")
+    output_path = f"{args.output_file_basename}_global_goodput.pdf"
+    fig.savefig(output_path, format="pdf", dpi=600, bbox_inches="tight")

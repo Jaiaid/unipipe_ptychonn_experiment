@@ -18,10 +18,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
-from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT, SYSSTAT_FILENAME_FMT
+from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT, SYSSTAT_FILENAME_FMT, FIGSIZE, AXLABEL_KW, YTICK_LABEL_KW, LEGEND_COLSPACING, LEGEND_PROP
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
+
+CUSTOM_SYSTEM_NAME_TO_LEGEND_DICT={
+    "pretrained_noipr": "Pretrained", "pretrained": "Pretrained-\nComp.",
+    "multicontext": "MultiContext",
+    "unipipe": "Unipipe\n(static)", "unipipe_dp": "Unipipe"
+}
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -88,7 +95,7 @@ if __name__ == "__main__":
                 match = re.search(r'ITERATION TAKES\(sec.\),([\d.eE+-]+)', line)
                 if match:
                     io_lat_list[sys].append(io_lat)
-                    fwpass_lat_list[sys].append(fwpass_lat)
+                    fwpass_lat_list[sys].append(fwpass_lat+io_lat)
                     bwpass_lat_list[sys].append(bwpass_lat)
                     chkpt_lat_list[sys].append(chkpt_lat)
                     inferbs_list[sys].append(inferbs)
@@ -128,10 +135,15 @@ if __name__ == "__main__":
     ax.bar(x, chkpt_mean, width=bar_width, label='Checkpoint', bottom=fwpass_mean+bwpass_mean, color='lightsalmon', edgecolor='black')
     # ax.bar(x, ctxswitch_mean, width=bar_width, label='Context Switch', bottom=fwpass_mean+bwpass_mean+chkpt_mean, color='lightgray', edgecolor='black')
 
-    ax.set_ylabel('Avg. Latency (ms)')
+    ax.set_ylabel('Latency (ms)', **AXLABEL_KW)
     ax.set_xticks(x)
-    ax.set_xticklabels([SYSTEM_NAME_TO_LEGEND_DICT[sys] for sys in SYSTEM_NAME_LIST], fontsize=4)
-    ax.legend(frameon=False, fontsize=6, loc='upper left')
+    ax.set_ylim([0, 40])
+    ax.set_yticks(np.arange(0, 30, 5))
+    ax.set_yticklabels(np.arange(0, 30, 5), **YTICK_LABEL_KW)
+    ax.set_xticklabels(
+        [CUSTOM_SYSTEM_NAME_TO_LEGEND_DICT[sys] for sys in SYSTEM_NAME_LIST],
+        fontsize=6.2, fontweight="bold"
+    )
 
     # ax1.set_ylabel('Per Sample FW. (s/req.)', color='blue')
     # ax1.tick_params(axis='y', labelcolor='blue')
@@ -142,8 +154,12 @@ if __name__ == "__main__":
     # ax1.tick_params(axis='y', labelcolor='blue')
     # infer_bs = [np.mean(inferbs_list[sys]) for sys in SYSTEM_NAME_LIST]
     # ax1.plot(x, infer_bs, color='blue', marker='o')
-    ax1.set_ylabel('GPU Util (%)', color='blue')
+    ax1.set_ylabel('GPU Util (%)', color='blue', **AXLABEL_KW)
     ax1.tick_params(axis='y', labelcolor='blue')
+    ax1.set_ylim([30, 100])
+    ax1.set_yticks(np.arange(30, 110, 10))
+    ax1.set_yticklabels(np.arange(30, 110, 10), **YTICK_LABEL_KW)
+
     gpu_util = []
     for sys in SYSTEM_NAME_LIST:
         p90 = np.percentile(gpuutil_list[sys], 90)
@@ -153,13 +169,15 @@ if __name__ == "__main__":
 
     percentile_90_all = [np.percentile(fwpass_lat_list[sys]+bwpass_lat_list[sys]+chkpt_lat_list[sys], 90)*1000 for sys in SYSTEM_NAME_LIST]
     ax.scatter(x, percentile_90_all, color='black', marker='x', label='P90 Total Latency')
-    ax.legend(frameon=False, fontsize=6, loc='upper left')
-
     percentile_90_fw = [np.percentile(fwpass_lat_list[sys], 90)*1000 for sys in SYSTEM_NAME_LIST]
     ax.scatter(x, percentile_90_fw, color='red', marker='+', label='P90 FW Latency')
-    ax.legend(frameon=False, fontsize=6, loc='upper left')
+    
+    ax.legend(frameon=False, prop=LEGEND_PROP, columnspacing=LEGEND_COLSPACING, loc='upper center', ncol=2)
+
     output_path = f"{args.output_file_basename}_{args.datarate}reqpersec.png"
     fig.savefig(output_path, dpi=600, bbox_inches="tight")
+    output_path = f"{args.output_file_basename}_{args.datarate}reqpersec.pdf"
+    fig.savefig(output_path, format="pdf", dpi=600, bbox_inches="tight")
 
     # print([np.any(bwpass_lat_list[sys])<0 for sys in SYSTEM_NAME_LIST])
     # print([np.any(chkpt_lat_list[sys])<0 for sys in SYSTEM_NAME_LIST])

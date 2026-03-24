@@ -60,10 +60,10 @@ class SHMInferDataReader():
 
         self.reposition()
 
-        if self.max_available_bs is not None:
-            bs = min (bs, self.max_available_bs)
+        # if self.max_available_bs is not None:
+        #     bs = min (bs, self.max_available_bs)
 
-        available_bs = min(int(math.floor(self.datarate * (time.time() - self.last_read_timestamp))), self.max_available_bs)
+        available_bs = int(math.floor(self.datarate * (time.time() - self.last_read_timestamp)))
         if logger is not None:
             logger.log("QUEUE BACKLOG LENGTH", int(math.floor(self.datarate * (time.time() - self.last_read_timestamp))))
 
@@ -105,13 +105,7 @@ class SHMInferDataReader():
                             dataidx_list.append(self.cur_readidx)
                             consumed += 1
 
-                            # inference will be done only once
-                            # so delete
-                            ipc.remove_shm(
-                                parameters.SHM_DATA_DIFFR_NAMEFMT.format(self.cur_readidx)
-                            )
-
-                            self.cur_readidx += 1
+                        self.cur_readidx += 1
                     else:
                         # inference will be done only once
                         # so delete
@@ -149,7 +143,7 @@ class SHMInferDataReader():
         
         return ara, consumed, missed, dataidx_list
     
-    def reposition(self):
+    def reposition(self, forward=False):
         """
             This method is special one to move the read head to current next available data 
             When it needs to move far 
@@ -165,9 +159,12 @@ class SHMInferDataReader():
         if self.start_timestamp is not None and self.datarate is not None:
             # adjust read idx according to current time
             expected_idx = max(0, math.floor((time.time() - self.start_timestamp - self.deadline_sec) * self.datarate))
-            if self.cur_readidx < expected_idx:
+            if not forward and self.cur_readidx < expected_idx:
                 # print("Repositioned infer read idx to ", expected_idx, " from expected idx ", self.cur_readidx, time.time())
                 self.cur_readidx = expected_idx
+            elif forward:
+                self.cur_readidx = int((time.time() -self.start_timestamp)*self.datarate)
+            self.last_read_timestamp = self.start_timestamp + (self.cur_readidx / self.datarate)
 
 
 class SHMTrainDataReader():

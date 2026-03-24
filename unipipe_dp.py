@@ -35,6 +35,8 @@ import ptychonn.utils
 import logfast.fastlogger
 
 global MAX_INFER_BATCH_SIZE
+global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
+INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT = 0
 
 
 def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDataReader,
@@ -44,6 +46,8 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                        logger:logfast.fastlogger.FastLogger, iteration_schedule=[],
                        time_limit=None, periter_validation=False, inffrac=1.0):
 
+    global INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT
+
     logger.log("UNIPIPE DP BEGIN")
     logger.log("UNIPIPE DP TRAINING DATASET SIZE", len(trainloader))
     logger.log("UNIPIPE DP INFER DATASET SIZE", len(teststream))
@@ -51,6 +55,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
     start_time = time.time()
     interval_init_time = time.time()
     interval_remaining_time = time_limit
+    output_process = None
 
     # taken from paper's code
     # if optimizer_objects is None:
@@ -129,6 +134,11 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
             # first take from test
             infer_count = 0
 
+            if not stat_queue.empty():
+                infer_delay_miss, forward = stat_queue.get() 
+                INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += infer_delay_miss
+                teststream.reposition(forward=forward)
+
             inferbs = iteration_schedule[cur_iteration_idx][1]
             # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
             #     pass
@@ -140,8 +150,6 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                         logger=logger, blocking_call=True
                     )
 
-                    # if consumed != inferbs:
-                    # print(consumed) 
                     if infer_batch is not None:
                         infer_count = infer_batch.shape[0]
                         inference_iter_count += 1
@@ -212,23 +220,46 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 # print(pred_amps.shape, pred_phs.shape)
                 if infer_count != len(inferidxlist):
                     print(infer_count != len(inferidxlist), infer_count, len(inferidxlist))
+
+                data_queue.put((
+                    inferidxlist,
+                    pred_amps_cpu_np[:infer_count],
+                    pred_ph_cpu_np[:infer_count],
+                    ipriteration_no
+                ))
                 for i in range(len(inferidxlist)):
                     inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_ph_cpu_np[i]
-                    )
-                    ptychonn.ipc.create_shm_data(
-                        os.path.join(
-                            ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                            ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                        ),
-                        pred_amps_cpu_np[i]
-                    )
+                #     # inference is done so remove the data from shm
+                #     # as inference will be done only once
+                #     # so delete
+                #     try:
+                #         ptychonn.ipc.remove_shm(
+                #             ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
+                #         )
 
+                #         ptychonn.ipc.create_shm_data(
+                #             os.path.join(
+                #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                #                 ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
+                #             ),
+                #             pred_ph_cpu_np[i]
+                #         )
+                #         ptychonn.ipc.create_shm_data(
+                #             os.path.join(
+                #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
+                #                 ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
+                #             ),
+                #             pred_amps_cpu_np[i]
+                #         )
+                    
+                #         inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
+                #     except FileNotFoundError as ex:
+                #         infer_delay_missed += 1
+                #         INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
+                
+                # logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
+                # if infer_delay_missed > 0:
+                #     teststream.reposition(forward=True)
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
 
@@ -242,7 +273,6 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 val_count = int(gt_amps.shape[0] * val_ratio)
 
                 backward_pass_arrival_time = time.time()
-                
                 
                 # if the flag is set update this for per iteration validaiton
                 if periter_validation:
@@ -385,10 +415,14 @@ if __name__ == "__main__":
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
 
-    # other variants are just for performance test
-    if args.model_type == "1.25M":
-        if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-            model.load_state_dict(torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=True))
+    if args.model_type in ["1.25M", "5M", "10M", "20M"]:
+        model_path = os.path.join(
+            "pretrained_model", "pretrained_bestmodel_{0}.pth".format(
+                ptychonn.model.get_model_name_from_type(type_name=args.model_type)
+            )
+        )
+        if os.path.exists(model_path):
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
@@ -441,8 +475,8 @@ if __name__ == "__main__":
         for line in f.readlines()[1:]:
             tokens = line.split()
             bs = int(tokens[0])
-            fwd_time_per_sample = float(tokens[4])
-            bwd_time_per_sample = float(tokens[6])
+            fwd_time_per_sample = round(float(tokens[4]), 4)
+            bwd_time_per_sample = round(float(tokens[6]), 4)
             forward_time_per_sample.append(fwd_time_per_sample)
             backward_time_per_sample.append(bwd_time_per_sample)
 
@@ -461,7 +495,7 @@ if __name__ == "__main__":
     unipipe_time_limit, iteration_schedule = ptychonn.perf_model.estimate_unipipe_schedule(
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
         acquisition_rate=args.datarate, ground_truth_count=args.gtcount,
-        maxbs = MAX_INFER_BATCH_SIZE, forward_time_per_sample=forward_time_per_sample,
+        maxbs = 128, forward_time_per_sample=forward_time_per_sample,
         backward_time_per_sample=backward_time_per_sample
     )
     logger.log("UNIPIPE DP TIME LIMIT,SCHEDULE", unipipe_time_limit, iteration_schedule)
@@ -481,6 +515,17 @@ if __name__ == "__main__":
     # to give producer time to put first data
     # time.sleep(1/args.datarate)
     time_list = []
+    
+    # start the helper output process, this is time consuming so start it before synchronizing with producer
+    # start the process to write inference results
+    data_queue = torch.multiprocessing.Queue(maxsize=10000)
+    stat_queue = torch.multiprocessing.Queue(maxsize=35000)
+
+    output_process = torch.multiprocessing.Process(
+        target=ptychonn.process_funcs.write_inference_results,
+        args=(data_queue, stat_queue)
+    )
+    output_process.start()
 
     # signal producer that done, needed if initiation become expensive
     ptychonn.ipc.signal_producer_from_ML_surrogate()
@@ -584,15 +629,22 @@ if __name__ == "__main__":
         # print(time.time(), unipipe_time_start, unipipe_time_limit, time.time() - unipipe_time_start)
         cur_ipriteration += int((time.time() - unipipe_time_start) // unipipe_time_limit)
 
-
     # postmortem of data, calculate error
     amp_error, ph_error, nn_amp_error, nn_ph_error = ptychonn.error_calculation.postsimulation_error_calc(
         skip_line=args.skip_line_pretrained, large_dataset=args.large_dataset
     )
 
+    # terminate the output process
+    output_process.terminate()
+
     with open(args.csvlog_file, "w") as fout:
         # amp error, ph error, nn amp error, nn ph error
         fout.write("{0},{1},{2},{3}\n".format(amp_error, ph_error, nn_amp_error, nn_ph_error))
+
+    # receive the stat queue from output process
+    while not stat_queue.empty():
+        INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += stat_queue.get()[0]
+    logger.log("INFER DELAY MISS COUNT", INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT)
 
     traindatalist_file.close()
     inferdatalist_file.close()
@@ -600,6 +652,10 @@ if __name__ == "__main__":
     logger.persist(args.csvlog_file[:-4] + ".log")
     print("Mean time: ", sum(time_list[2:])/(len(time_list)-2), unipipe_time_limit)
 
+    # doing at last, in case it hangs we will still have the log
+    # terminate the output process by putting sentinel
+    data_queue.put((None, None, None, None))
+    output_process.join()
 
     # # do this at the end to avoid any performance in continual training
     # if args.allckpttest:

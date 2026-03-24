@@ -1,5 +1,5 @@
 """
-Courtesy of ChatGPT
+Courtesy of Gemini, ChatGPT
 
 It expects data like following format
 data_dir/
@@ -19,12 +19,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
-from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT_TRANSMISSION
+from plot_parameters import SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT_TRANSMISSION, LEGEND_PROP, LEGEND_COLSPACING, AXLABEL_KW, YTICK_LABEL_KW, FIGSIZE
 
 IPR_RATE_LIST = [16]
 DEADLINE_LIST = [80]
 DATARATE_LIST = [3000]
 BS_LIST = [16, 32, 64, 128]
+
+CUSTOM_SYSTEM_NAME_TO_LEGEND_DICT={
+    "pretrained_noipr": "Pretrained", "pretrained": "Pretrained-\nComp.",
+    "multicontext": "MultiContext",
+    "unipipe": "Unipipe\n(static)", "unipipe_dp": "Unipipe"
+}
 
 
 if __name__ == "__main__":
@@ -53,7 +59,7 @@ if __name__ == "__main__":
     num_systems = len(SYSTEM_NAME_LIST)
     x = np.arange(num_systems)
 
-    fig, ax = plt.subplots(figsize=(4, 2.25))
+    fig, ax = plt.subplots(figsize=FIGSIZE)
 
     for param in BS_LIST:
         values = results[param]
@@ -63,9 +69,15 @@ if __name__ == "__main__":
         )
 
     ax.set_xticks(np.arange(num_params+1))
-    ax.set_xticklabels([SYSTEM_NAME_TO_LEGEND_DICT[sys] for sys in SYSTEM_NAME_LIST], fontsize=4)
-    ax.set_ylabel("Miss Rate(%)")
-    ax.legend()
+    ax.set_xticklabels(
+        [CUSTOM_SYSTEM_NAME_TO_LEGEND_DICT[sys] for sys in SYSTEM_NAME_LIST],
+        fontsize=7, fontweight="bold"
+    )
+    ax.set_ylim([-5, 120])
+    ax.set_yticks(np.arange(0, 120, 20))
+    ax.set_yticklabels(np.arange(0, 120, 20), **YTICK_LABEL_KW)
+    ax.set_ylabel("Miss Rate(%)", **AXLABEL_KW)
+    ax.legend(frameon=False, loc="upper center", ncol=4, prop=LEGEND_PROP)
 
     fig.savefig("{0}.png".format(args.output_file_basename), dpi=600, bbox_inches="tight")
     fig.savefig("{0}.pdf".format(args.output_file_basename), format="pdf", dpi=600, bbox_inches="tight")

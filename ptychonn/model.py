@@ -30,6 +30,9 @@ class recon_model(nn.Module):
           nn.ReLU(),
           nn.MaxPool2d((2,2)),
           )
+        for name, layer in self.encoder.named_children():
+          if name in ['0', '2', '5', '7', '10']: #Conv layers
+            layer.requires_grad_(False) #Freeze decoder1 weights
 
         self.decoder1 = nn.Sequential(
 
@@ -55,6 +58,11 @@ class recon_model(nn.Module):
           nn.Sigmoid() #Amplitude model
           )
 
+        # for name, layer in self.decoder1.named_children():
+        #   if name in ['0']: #Conv layers
+        #     layer.requires_grad_(False) #Freeze decoder1 weights
+
+
         self.decoder2 = nn.Sequential(
 
           nn.Conv2d(nconv*4, nconv*4, 3, stride=1, padding=(1,1)),
@@ -78,6 +86,10 @@ class recon_model(nn.Module):
           nn.Conv2d(nconv*2, 1, 3, stride=1, padding=(1,1)),
           nn.Tanh() #Phase model
           )
+
+        # for name, layer in self.decoder2.named_children():
+        #   if name in ['0']: #Conv layers
+        #     layer.requires_grad_(False) #Freeze decoder1 weights
 
         # def weight_reset(m):
         #   if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
