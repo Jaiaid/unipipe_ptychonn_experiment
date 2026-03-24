@@ -206,10 +206,15 @@ if __name__ == "__main__":
 
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
-    # other variants are just for performance test
-    if args.model_type == "1.25M":
-        if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-            model.load_state_dict(torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=True))
+    
+    if args.model_type in ["1.25M", "5M", "10M", "20M"]:
+        model_path = os.path.join(
+            "pretrained_model", "pretrained_bestmodel_{0}.pth".format(
+                ptychonn.model.get_model_name_from_type(type_name=args.model_type)
+            )
+        )
+        if os.path.exists(model_path):
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
@@ -221,9 +226,8 @@ if __name__ == "__main__":
     # exit()
     # GPU environment is assumend
     model = model.to("cuda")
-    model.eval()
-    
     _, _, _, nn_uf, nn_ub = ptychonn.model.benchmark_model(model)
+    model.eval()
 
     # initiate the logger
     logger = logfast.fastlogger.FastLogger()
@@ -270,7 +274,7 @@ if __name__ == "__main__":
         MAX_INFER_BATCH_SIZE = ptychonn.perf_model.SystemTuner.calc_deadline_aware_maxthpt_bs(
             forward_time_per_sample, deadline_sec, args.datarate
         )
-        MAX_INFER_BATCH_SIZE = 26
+        # MAX_INFER_BATCH_SIZE = 26
         logger.log("TUNED MAXBS", MAX_INFER_BATCH_SIZE)
 
     if args.large_dataset:

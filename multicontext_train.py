@@ -189,13 +189,25 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 copy.deepcopy(model).to("cpu"),
                 next_model
             ))
+            # ptychonn.process_funcs.update_saved_model(
+            #     model=model,
+            #     path=os.path.join(
+            #         "/dev/shm/", chkpt_dir
+            #     ),
+            #     name=ptychonn.multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
+            # )
+            # ptychonn.ipc.create_shm_marker(
+            #     os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)))
+            # ptychonn.ipc.create_shm_marker(
+            #     os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)+str(time.time())))
+
             taken_time = time.time() - model_save_start_time
             model_save_spenttime_list.append(taken_time)
 
             logger.log(
                 "CREATING CHECKPOINT",
-                os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)),
-                os.path.join(chkpt_dir, multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model))
+                os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)),
+                os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model))
             )
             next_model += 1
             previous_loss = tot_loss/(total_iter_count + 1)
@@ -275,15 +287,21 @@ if __name__ == "__main__":
     # backward pass tuned for throughput
     nn_uf = 0.0023
     nn_ub = 0.00027
-    # other variants are just for performance test
-    if args.model_type == "1.25M":
-        if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-            model.load_state_dict(torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=True))
+    
+    if args.model_type in ["1.25M", "5M", "10M", "20M"]:
+        model_path = os.path.join(
+            "pretrained_model", "pretrained_bestmodel_{0}.pth".format(
+                ptychonn.model.get_model_name_from_type(type_name=args.model_type)
+            )
+        )
+        if os.path.exists(model_path):
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
     # GPU environment is assumed
     model.to("cuda")
+    model.train()
 
     # taken from paper's code
     # if optimizer_objects is None:
@@ -376,7 +394,7 @@ if __name__ == "__main__":
     # start the checkpointing process to save model periodically
     # without incurring compute stall
     torch.multiprocessing.set_start_method('spawn')
-    data_queue = torch.multiprocessing.Queue(maxsize=100)
+    data_queue = torch.multiprocessing.Queue(maxsize=1000)
 
     checkpointing_process = torch.multiprocessing.Process(
         target=ptychonn.process_funcs.checkpointing_process_function,
@@ -466,11 +484,12 @@ if __name__ == "__main__":
     logger.log(
         "MODEL SAVE OVERHEADS", model_save_spenttime_list
     )
-    # logger.log(
-    #     "MODEL SAVE OVERHEAD (MIN/AVG/MAX)", min(model_save_spenttime_list),
-    #     sum(model_save_spenttime_list)/len(model_save_spenttime_list),
-    #     max(model_save_spenttime_list)
-    # )
+    if len(model_save_spenttime_list)>0:
+        logger.log(
+            "MODEL SAVE OVERHEAD (MIN/AVG/MAX)", min(model_save_spenttime_list),
+            sum(model_save_spenttime_list)/len(model_save_spenttime_list),
+            max(model_save_spenttime_list)
+        )
     
     logger.persist(args.csvlog_file[:-4] + "_train.log")
     checkpointing_process.terminate()

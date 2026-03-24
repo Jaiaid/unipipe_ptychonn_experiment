@@ -427,10 +427,14 @@ if __name__ == "__main__":
     # init the model
     model = ptychonn.model.get_model(type_name=args.model_type)
 
-    # other variants are just for performance test
-    if args.model_type == "1.25M":
-        if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
-            model.load_state_dict(torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=True))
+    if args.model_type in ["1.25M", "5M", "10M", "20M"]:
+        model_path = os.path.join(
+            "pretrained_model", "pretrained_bestmodel_{0}.pth".format(
+                ptychonn.model.get_model_name_from_type(type_name=args.model_type)
+            )
+        )
+        if os.path.exists(model_path):
+            model.load_state_dict(torch.load(model_path, weights_only=True))
         else:
             print("Pretrained Model Not Found...Exiting")
             exit()
@@ -504,7 +508,7 @@ if __name__ == "__main__":
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
         acquisition_rate=args.datarate, ground_truth_count=args.gtcount,
         forward_time_per_sample=forward_time_per_sample, backward_time_per_sample=backward_time_per_sample,
-        maxbs = MAX_INFER_BATCH_SIZE
+        maxbs = 128
     )
     logger.log("UNIPIPE TIME LIMIT,SCHEDULE", unipipe_time_limit, iteration_schedule)
     logger.log("TUNED MAXBS", MAX_INFER_BATCH_SIZE)
