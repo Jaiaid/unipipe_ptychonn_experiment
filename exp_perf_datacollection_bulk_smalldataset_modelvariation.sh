@@ -18,7 +18,7 @@ IPR_THROUGHPUT_TUNED=16
 DEADLINEMSEC=80
 DATARATE=3000
 GTCOUNT_DPINPUT=1
-MAXTIMEOUTSEC=120
+MAXTIMEOUTSEC=500
 
 # DATA SAMPLE COUNT
 # THIS IS IMPORTANT AS IT WILL DETERMINE THE DURATION FOR GIVEN INTERVAL COUNT
@@ -29,7 +29,7 @@ SKIPLINE=33
 EXP_RESULT_ROOT_DIR=result_logs/smalldataset_modelvariation
 mkdir -p $EXP_RESULT_ROOT_DIR
 
-for MODELTYPE in 1.25M 5M 10M 20M 100M 200M
+for MODELTYPE in 1.25M 5M 10M 20M
 do
     EXP_RESULT_DIR=$EXP_RESULT_ROOT_DIR/modeltype_${MODELTYPE}
     mkdir -p $EXP_RESULT_DIR
@@ -78,6 +78,9 @@ do
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe_dp/unipipe_dp_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/traindatalist_unipipe_dp_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe_dp/traindatalist_unipipe_dp_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_unipipe_dp_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe_dp/inferdatalist_unipipe_dp_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/unipipe_dp/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/unipipe_dp/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/unipipe_dp/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 
     mkdir -p $EXP_RESULT_DIR/unipipe
@@ -125,6 +128,9 @@ do
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/traindatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/traindatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/inferdatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/unipipe/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/unipipe/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/unipipe/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 
 
@@ -146,7 +152,7 @@ do
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        timeout $MAXTIMEOUTSEC python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        timeout $MAXTIMEOUTSEC python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -174,6 +180,9 @@ do
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/traindatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/inferdatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/multicontext/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/multicontext/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/multicontext/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 done
 

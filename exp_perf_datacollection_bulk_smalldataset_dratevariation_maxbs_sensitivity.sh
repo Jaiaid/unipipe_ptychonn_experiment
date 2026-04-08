@@ -80,6 +80,9 @@ for MAXBS in 16 32 64 128;do
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe_dp/unipipe_dp_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/traindatalist_unipipe_dp_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe_dp/traindatalist_unipipe_dp_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_unipipe_dp_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe_dp/inferdatalist_unipipe_dp_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/unipipe_dp/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/unipipe_dp/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/unipipe_dp/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 
     mkdir -p $EXP_RESULT_DIR/pretrained_noipr
@@ -117,6 +120,9 @@ for MAXBS in 16 32 64 128;do
         mv tmp.log ${EXP_RESULT_DIR}/pretrained_noipr/pretrained_noipr_${c}_${deadlinemsec}_${rate}_${iprt}.log
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained_noipr/pretrained_noipr_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_pretrained_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/pretrained_noipr/inferdatalist_pretrained_noipr_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/pretrained_noipr/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/pretrained_noipr/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/pretrained_noipr/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 
 
@@ -165,6 +171,9 @@ for MAXBS in 16 32 64 128;do
         mv tmp.log ${EXP_RESULT_DIR}/pretrained/pretrained_${c}_${deadlinemsec}_${rate}_${iprt}.log
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/pretrained/pretrained_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_pretrained_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/pretrained/inferdatalist_pretrained_${c}_${deadlinemsec}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/pretrained/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/pretrained/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/pretrained/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 
 
@@ -214,6 +223,9 @@ for MAXBS in 16 32 64 128;do
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/unipipe/unipipe_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/traindatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/traindatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_unipipe_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/unipipe/inferdatalist_unipipe_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/unipipe/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/unipipe/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/unipipe/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 
     mkdir -p $EXP_RESULT_DIR/multicontext
@@ -235,7 +247,7 @@ for MAXBS in 16 32 64 128;do
         STREAM_PROCESS_PID=$!
         echo $STREAM_PROCESS_PID
 
-        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE &
+        python3 phase_retrieval_mockprocess.py -ar $rate -gr $iprt -icount $c -idur $dur -d $deadlinemsec -skipline $SKIPLINE -unipipedp &
         IPR_PROCESS_PID=$!
         echo $IPR_PROCESS_PID
 
@@ -263,6 +275,9 @@ for MAXBS in 16 32 64 128;do
         mv tmp_sysstat.csv ${EXP_RESULT_DIR}/multicontext/multicontext_sysstat_${c}_${deadlinemsec}_${rate}_${iprt}.csv
         mv /dev/shm/traindatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/traindatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
         mv /dev/shm/inferdatalist_multicontext_${c}_${dur}_${rate}_${iprt}.csv ${EXP_RESULT_DIR}/multicontext/inferdatalist_multicontext_${c}_${deadlinemsec}_${dur}_${rate}_${iprt}.csv
+        mv stitched_construction.png ${EXP_RESULT_DIR}/multicontext/stitched_construction_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_ph_error.png ${EXP_RESULT_DIR}/multicontext/nn_generated_data_ph_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
+        mv nn_generated_data_amp_error.png ${EXP_RESULT_DIR}/multicontext/nn_generated_data_amp_error_${c}_${deadlinemsec}_${rate}_${iprt}.png
     done
 
     popd
