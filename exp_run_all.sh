@@ -1,13 +1,23 @@
-# renew the result storage
-#rm -r result_logs
-#mkdir -p result_logs
+#!/bin/bash
+
+EXP_NAME=$1
+
+
+mkdir -p result_logs_${EXP_NAME}_$(date +%Y%m%d_%H%M%S)
 
 # dataset 1
-time bash exp_perf_datacollection_bulk_smalldataset_bratevariation.sh > exp_perf_datacollection_bulk_smalldataset_bratevariation.log
 time bash exp_perf_datacollection_bulk_smalldataset_dratevariation.sh > exp_perf_datacollection_bulk_smalldataset_dratevariation.log
+time bash exp_perf_datacollection_bulk_smalldataset_bratevariation.sh > exp_perf_datacollection_bulk_smalldataset_bratevariation.log
 time bash exp_perf_datacollection_bulk_smalldataset_deadlinevariation.sh > exp_perf_datacollection_bulk_smalldataset_deadlinevariation.log
 
 # dataset 2
 time bash exp_perf_datacollection_bulk_largedataset_bratevariation.sh > exp_perf_datacollection_bulk_largedataset_bratevariation.log
 time bash exp_perf_datacollection_bulk_largedataset_dratevariation.sh > exp_perf_datacollection_bulk_largedataset_dratevariation.log
 time bash exp_perf_datacollection_bulk_largedataset_deadlinevariation.sh > exp_perf_datacollection_bulk_largedataset_deadlinevariation.log
+
+# model sensitivity and max bs sensitivity
+time bash exp_perf_datacollection_bulk_smalldataset_dratevariation_maxbs_sensitivity.sh > exp_perf_datacollection_bulk_smalldataset_dratevariation_maxbs_sensitivity.log 
+time bash exp_perf_datacollection_bulk_smalldataset_modelvariation.sh > exp_perf_datacollection_bulk_smalldataset_modelvariation.log
+
+# plot all figures
+bash exp_plot_all.sh
