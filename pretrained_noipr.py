@@ -196,7 +196,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--ipr-throughput", "-iprt", type=float, default=None, help="IPR process throughput")
     arg_parser.add_argument("--csvlog-file", "-csvlog", type=str, required=True, help="name of csv log file")
     arg_parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
-    arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be ysed")
+    arg_parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be used")
     arg_parser.add_argument("--model-type", "-type", type=str, choices=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
     arg_parser.add_argument("--gtcount", "-gtcount", type=int, required=False, help="how many ground truth will be consumed by phase retrieval process", default=1)
     arg_parser.add_argument("--maxinfer-bs", "-maxinferbs", type=int, default=None,  help="what is the max infer batch size to use, if not set use perf model to decide")
@@ -209,8 +209,9 @@ if __name__ == "__main__":
     
     if args.model_type in ["1.25M", "5M", "10M", "20M"]:
         model_path = os.path.join(
-            "pretrained_model", "pretrained_bestmodel_{0}.pth".format(
-                ptychonn.model.get_model_name_from_type(type_name=args.model_type)
+            "pretrained_model", "pretrained_bestmodel_{0}_{1}.pth".format(
+                ptychonn.model.get_model_name_from_type(type_name=args.model_type),
+                "large" if args.large_dataset else "small"
             )
         )
         if os.path.exists(model_path):

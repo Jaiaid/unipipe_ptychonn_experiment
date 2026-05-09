@@ -417,8 +417,9 @@ if __name__ == "__main__":
 
     if args.model_type in ["1.25M", "5M", "10M", "20M"]:
         model_path = os.path.join(
-            "pretrained_model", "pretrained_bestmodel_{0}.pth".format(
-                ptychonn.model.get_model_name_from_type(type_name=args.model_type)
+            "pretrained_model", "pretrained_bestmodel_{0}_{1}.pth".format(
+                ptychonn.model.get_model_name_from_type(type_name=args.model_type),
+                "large" if args.large_dataset else "small"
             )
         )
         if os.path.exists(model_path):
