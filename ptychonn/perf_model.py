@@ -132,10 +132,9 @@ def estimate_unipipe_schedule(
         ground_truth_count, accum_while_gt_genereted, 0, maxbs, interarrival_gap,
         deadline_sec, forward_time_per_sample, backward_time_per_sample
     )
-
     # build schedule
     i = ground_truth_count
-    j = accum_while_gt_genereted
+    j = accum_while_gt_genereted-ground_truth_count
     S = []
     # print(solution)
     # the schedule will be built in reverse order
@@ -148,8 +147,7 @@ def estimate_unipipe_schedule(
         (i, j) = (i-k, j-t)
     S.reverse()
 
-    T_IPR = math.ceil(Tk*acquisition_rate)/acquisition_rate
-
+    T_IPR = Tk #math.ceil(Tk*acquisition_rate)/acquisition_rate
     return T_IPR, S
 
     # return max(
@@ -186,10 +184,18 @@ class SystemTuner:
             deadline_sec (float): Deadline in seconds.
 
         Returns:
-            int: Maximum batch size that meets the deadline constraint.
+            int: Maximum batch size that meets the deadline constraint and minimizes the time 
+            difference between processing time and accumulation time to reduce starvation or 
+            accumulation.
         """
         max_bs = 0
+        min_dist = math.inf
         for bs, latency in enumerate(bs_forwardpass_per_sample_benchmark):
+            # convert to 10^-4 precision to avoid experimental noise effect
+            latency = round(latency, 4)
             if (bs+1)*latency + (bs+1)/datarate <= deadline_sec:
-                max_bs = bs+1
+                if abs((bs+1)*latency - (bs+1)/datarate) < min_dist:
+                    min_dist = abs((bs+1)*latency - (bs+1)/datarate)
+                    max_bs = bs+1
+        # max_bs = 26
         return max_bs
