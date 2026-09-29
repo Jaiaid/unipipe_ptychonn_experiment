@@ -33,7 +33,7 @@ if __name__ == "__main__":
         label = []
         ticklabel = []
 
-        interval_count = 5
+        interval_count = 3
         interval_duration = args.duration
         datarate = args.datarate
 
@@ -88,8 +88,8 @@ if __name__ == "__main__":
                 inference_iteration_gap_timelist[i] = inference_iteration_gap_timelist[i] - interval_time_list[1]
     
             ax1.plot(
-                inference_iteration_gap_timelist[1:],
-                throughput_ara,
+                inference_iteration_gap_timelist[1::50],
+                throughput_ara[::50],
                 label=system, marker=SYSTEM_TO_COLORMARKER_DICT[system][1],
                 color=SYSTEM_TO_COLORMARKER_DICT[system][0]
             )
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     # ax1.set_xticks(xticks)
     # ax1.set_xticklabels(xticklabels, size=9, rotation=90)
     # ax1.legend(COMPARED_SYSTEMS)
-    # ax1.set_ylim([0, 10])
+    ax1.set_ylim([0, 1000])
     fig1.savefig("figure_inference_throughput_{0}_{1}_{2}.pdf".format(args.duration, args.datarate, args.accumallow),
                  format="pdf", bbox_inches='tight')
 

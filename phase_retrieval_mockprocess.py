@@ -1,0 +1,223 @@
+
+
+import numpy as np
+import math
+import os
+import time
+import argparse
+import h5py
+
+from skimage.transform import resize
+
+from ptychonn import ipc
+from ptychonn import parameters
+from ptychonn import dataset
+from ptychonn import perf_model
+
+# PERFORMANCE MODEL 1
+# Phase Retrieval generation time length without any skipping
+# Assumption:
+# 1/phase_retrieval_genrate < deadline_sec
+# def estimate_T_IPR(
+#         phase_retrieval_genrate: float, acquisition_rate: float,
+#         deadline_sec: float):
+
+#     return max(
+#         1/phase_retrieval_genrate,
+#         # deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.0005+phase_retrieval_genrate*0.0015)
+#         min(
+#             deadline_sec,
+#             deadline_sec / ((acquisition_rate - phase_retrieval_genrate)*0.00027+phase_retrieval_genrate*0.00036)
+#         )
+#     )
+    # return deadline_sec
+    # return phase_retrieval_genrate * deadline_sec / (acquisition_rate - phase_retrieval_genrate)
+
+
+def cleanup():
+    ipc.remove_shm(parameters.SHM_MARKER_IPR_INIT_FINISH)
+
+
+
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+
+    # following arguments will be used to estimate 
+    # when the mock process should skip 
+    # how much to skip when generating ground truth
+    parser.add_argument("--acquisition-rate", "-ar", type=float, help="at which rate (Hz/s^-1) new data will be coming")
+    parser.add_argument("--generation-rate", "-gr", type=float, help="at which rate (Hz/s^-1) new ground truth will be generated")
+    parser.add_argument("--deadline-msec", "-d", type=float, help="after how many millisecond a data file in shm will be removed, also determines interval length")
+    parser.add_argument("--skip-line-pretrained", "-skipline", type=int, help="how many data to skip as model is pretrained on it")
+    parser.add_argument("--interval-count", "-icount", type=int, help="how many interval to run for")
+    parser.add_argument("--interval-duration", "-idur", type=float, required=True, help="length of interval in seconds")
+    parser.add_argument("--interval-one-oracle", "-i", action="store_true", help="first interval all ground truth data will be made available")
+    parser.add_argument("--large-dataset", "-largedataset", action="store_true", help="if larger dataset will be used")
+    parser.add_argument("--unipipe-scheduler", "-unipipe", action="store_true", help="if working with unipipe scheduler")
+    parser.add_argument("--pretrained-scheduler", "-pretrained", action="store_true", help="if working with pretrained scheduler")
+    parser.add_argument("--unipipedp-scheduler", "-unipipedp", action="store_true", help="if working with unipipedp scheduler")
+    parser.add_argument("--gtcount", "-gtcount", type=int, required=False, help="how many ground truth will be consumed by phase retrieval process", default=1)
+
+    args = parser.parse_args()
+
+    # ground truth data will be 161x161 (parameters.DIFFRLINE X parameters.DIFFRLINE) 
+    # for each probe point in a 161x161 probe field we will have ground truth of 64x64 (parameters.H X parameters.W)
+    if args.large_dataset:
+        gt_data_i, gt_data_ph = dataset.get_large_gtdata(skip_line=args.skip_line_pretrained)
+    else:
+        gt_data_i, gt_data_ph = dataset.get_gtdata(skip_line=args.skip_line_pretrained)
+
+    # generation state
+    current_generate_idx = 0
+    current_interval = 0
+
+    total_generated = 0
+    total_missed = 0
+    retry_attempt = 0
+    deadline_sec = args.deadline_msec/1000
+
+    # perf. model estimated property
+    if args.unipipe_scheduler:
+        time_stretch_continuous_data_process, _, _ = perf_model.estimate_T_IPR_unipipe(
+            phase_retrieval_genrate=args.generation_rate,
+            acquisition_rate=args.acquisition_rate,
+            deadline_sec=deadline_sec)
+    elif args.unipipedp_scheduler:
+        time_stretch_continuous_data_process = math.ceil((args.gtcount / args.generation_rate)*args.acquisition_rate)/args.acquisition_rate
+    elif args.pretrained_scheduler:
+        time_stretch_continuous_data_process = perf_model.estimate_T_IPR_pretrained(
+            phase_retrieval_genrate=args.generation_rate,
+            acquisition_rate=args.acquisition_rate,
+            deadline_sec=deadline_sec)
+    else:
+        time_stretch_continuous_data_process = perf_model.estimate_T_IPR(
+            phase_retrieval_genrate=args.generation_rate,
+            acquisition_rate=args.acquisition_rate,
+            deadline_sec=deadline_sec)
+
+    if not args.unipipedp_scheduler:
+        skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate)) + 1
+    else:
+        skip_data_idx = math.floor(time_stretch_continuous_data_process * args.acquisition_rate) - args.gtcount
+
+    print(time_stretch_continuous_data_process, skip_data_idx)
+
+    # signal finish of initiation
+    print("signaling producer")
+    ipc.signal_producer_from_computation()
+    print("waiting for produce acknowledgement of starting", time.time())
+    # blockingwait until data streaming start
+    start_timestamp, total_streamtime = ipc.producer_transmit_wait()
+    print("data capture start", start_timestamp)
+
+    current_timestamp = start_timestamp
+    data_process_interval_start_timestamp = start_timestamp
+    cur_ipriteration = 0
+    # to give producer time to put first data
+    if args.unipipedp_scheduler:
+        time.sleep(args.gtcount/args.acquisition_rate)
+    else:
+        time.sleep(1/args.acquisition_rate)
+
+    while current_timestamp - start_timestamp < total_streamtime:
+        if args.unipipedp_scheduler:
+            current_interval_start_timestamp = start_timestamp + (current_generate_idx + 1) / args.acquisition_rate # cur_ipriteration * time_stretch_continuous_data_process + args.gtcount/args.acquisition_rate
+        else:
+            current_interval_start_timestamp = start_timestamp + (current_generate_idx + 1) / args.acquisition_rate # start_timestamp + cur_ipriteration * time_stretch_continuous_data_process + 1/args.acquisition_rate
+        
+        # if current_interval_start_timestamp < start_timestamp+4:
+        #     print(current_interval_start_timestamp, current_interval_start_timestamp - start_timestamp)
+
+        while time.time() < current_interval_start_timestamp:
+            pass
+
+        cur_folder = parameters.SHM_MARKER_FMT_GTGENERATION_FOLDER.format(cur_ipriteration)
+        ipc.create_shm_folder(cur_folder)
+
+        ipc.create_shm_marker(
+            os.path.join(cur_folder, "{0}.tscreate".format(
+                (time.time()-start_timestamp)*args.acquisition_rate)
+            )
+        )
+        # ipc.create_shm_marker(
+        #     os.path.join(cur_folder, "{0}.tsstart".format(
+        #         (current_interval_start_timestamp-start_timestamp)*args.acquisition_rate)
+        #     )
+        # )
+
+        current_timestamp = current_interval_start_timestamp
+        data_process_interval_start_timestamp = current_interval_start_timestamp
+        generation_count_in_interval = 0
+
+        while generation_count_in_interval < args.gtcount and current_timestamp - current_interval_start_timestamp < time_stretch_continuous_data_process:
+            # to indicate consumption tp transmit process the data is deleted
+            try:
+                ipc.move_shm(
+                    parameters.SHM_DATA_DIFFR_NAMEFMT.format(current_generate_idx),
+                    cur_folder
+                )
+            except FileNotFoundError as e:
+                # print(current_generate_idx, " not found at ", time.time())
+                current_timestamp = time.time()
+                total_missed += 1
+                continue
+            # print("current generate idx:", current_generate_idx, " at ", time.time())
+            # time gap to wait for the generation
+            # it will be a busy loop
+            while current_timestamp - data_process_interval_start_timestamp < 0.667/args.generation_rate:
+                current_timestamp = time.time()
+
+            # create the data in shared memory space /dev/shm
+            ipc.create_shm_data(
+                os.path.join(cur_folder, parameters.SHM_DATA_GEN_AMP_NAMEFMT.format(current_generate_idx)),
+                gt_data_i[current_generate_idx])
+            ipc.create_shm_data(
+                os.path.join(cur_folder, parameters.SHM_DATA_GEN_PHASE_NAMEFMT.format(current_generate_idx)),
+                gt_data_ph[current_generate_idx])
+            ipc.create_shm_marker(
+                os.path.join(cur_folder, "{0}.ts".format(
+                    (time.time()-start_timestamp)*args.acquisition_rate)
+                )
+            )
+            total_generated += 1
+            generation_count_in_interval += 1
+
+            # increase generation idx
+            current_generate_idx += 1
+            data_process_interval_start_timestamp += 1 / args.generation_rate
+            current_timestamp = time.time()
+        # one ipr interval done
+        ipc.create_shm_marker(parameters.SHM_MARKER_FMT_IPRINTERVAL_END.format(cur_ipriteration))
+        cur_ipriteration += 1
+
+        # print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
+        if args.unipipedp_scheduler and (args.acquisition_rate == 2000 or args.acquisition_rate == 4000):
+            current_generate_idx = (skip_data_idx+1)*cur_ipriteration
+        else:
+            current_generate_idx = skip_data_idx*cur_ipriteration
+
+    print("==================================IPR Mock Status=================================")
+    print("Data rate: {0}Hz".format(args.acquisition_rate))
+    print("Deadline: {0}ms".format(args.deadline_msec))
+    print("Generation rate: {0}Hz".format(args.generation_rate))
+    print("Total Generated: {0}".format(total_generated))
+    print("Total Missed: {0}".format(total_missed))
+    total_time = time.time() - start_timestamp
+    print("Total Time: {0}s".format(total_time))
+
+    # output the transmission related data into a csv
+    with open("ipr_generation_state.csv", "w") as fout:
+        # rate,deadline_msec,total,consumed,missed,transmission time, total time
+        fout.write(
+            "{0},{1},{2},{3},{4},{5}\n".format(
+                args.acquisition_rate, args.deadline_msec, args.generation_rate,
+                total_generated, total_missed, total_time
+            )
+        )
+
+    # cleanup
+    try:
+        cleanup()
+    except Exception as e:
+        print("Exception during cleanup:", e)
+    print("IPR mock process finished cleanup and exit")

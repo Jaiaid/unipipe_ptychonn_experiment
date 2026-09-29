@@ -10,9 +10,9 @@ import plotprop
 SYSTEM_TO_COLORMARKER_DICT = {"pretrained": ("tab:orange", "/"), "worst_case": ("r", "\\"), "multicontext": ("g", "o"), "unipipe": ("b", "+")}
 
 # parameter describing configurations
-DUR_LIST = [20, 40]
-DATARATE_LIST = [30, 60]
-REQALLOW_LIST = [5, 10]
+DUR_LIST = [86, 172]
+DATARATE_LIST = [50, 100]
+REQALLOW_LIST = [100, 500]
 
 
 if __name__ == "__main__":
@@ -36,7 +36,7 @@ if __name__ == "__main__":
             for datarate in DATARATE_LIST:
                 for accumallow in REQALLOW_LIST:
 
-                    basename = "{0}_sysstat_5_{1}_{2}_{3}.csv".format(system, dur, datarate, accumallow) 
+                    basename = "{0}_sysstat_3_{1}_{2}_{3}.csv".format(system, dur, datarate, accumallow) 
                     csv_filepath = os.path.join((os.path.join(rootpath, system)), basename)
 
                     max_usage = 0

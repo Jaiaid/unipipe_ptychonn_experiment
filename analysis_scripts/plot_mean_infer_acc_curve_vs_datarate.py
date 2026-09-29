@@ -6,7 +6,7 @@ import argparse
 
 import plotprop
 
-SYSTEM_TO_COLORMARKER_DICT = {"pretrained": ("c", "*"), "worst_case": ("r", "+"), "multicontext": ("g", "o"), "unipipe": ("b", "x")}
+SYSTEM_TO_COLORMARKER_DICT = {"pretrained": ("c", "*"), "multicontext": ("r", "+"), "unipipe": ("b", "x")}
 
 # INTERVAL_TIMELIST = [4, 5]
 # INTERVAL_TIMELIST = [4, 5, 6, 7]
@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
 
         for filename in os.listdir(data_dirpath):
-            if filename[-4:] != ".csv" or "sysstat" in filename:
+            if filename[-4:] != ".csv" or "sysstat" in filename or "transmission" in filename or "ipr" in filename:
                 continue
 
             tokens = filename.split(".")
@@ -53,8 +53,6 @@ if __name__ == "__main__":
                 interval_duration = int(tokens[-3])
                 datarate = int(tokens[-2])
                 deadline_msec = int(tokens[-1])
-            if deadline_msec not in [5 , 10]:
-                continue
 
             print(filename,tokens)
 
@@ -66,6 +64,7 @@ if __name__ == "__main__":
             cur_label = label[-1]
 
             data_filepath = os.path.join(data_dirpath, filename)
+            print(data_filepath)
             with open(data_filepath) as fin:
                 # first reading it into a list
                 # to calculate both average and variance
@@ -73,16 +72,12 @@ if __name__ == "__main__":
                 ph_error = []
                 line_count = 0
                 for line in fin.readlines():
-                    run_amp_error = []
-                    run_ph_error = []
                     tokens = line.split(",")
-                    
-                    run_amp_error = [float(token) for token in tokens[2:2+interval_count-1]]
-                    # print(run_amp_error)
-                    run_ph_error = [float(token) for token in tokens[2+interval_count-1:2+2*interval_count-2]]
-                    amp_error.append(np.mean(np.array(run_amp_error)))
-                    ph_error.append(np.mean(np.array(run_ph_error)))
+                    amp_error = float(tokens[2])
+                    ph_error = float(tokens[3])
                     line_count += 1
+
+                assert line_count == 1, "error more than single line, CHECK {0}".format(data_filepath)
 
                 if datarate not in data_dict[system][interval_duration]:
                     data_dict[system][interval_duration][datarate] = {}
@@ -93,7 +88,7 @@ if __name__ == "__main__":
     xticklabels = []
     xticks = []
     variant_idx = 0
-    
+    print(data_dict)
     interval_duration_list = sorted(list(data_dict["unipipe"].keys()))
     for interval_duration in interval_duration_list:
         datarate_list = sorted(list(data_dict["unipipe"][interval_duration].keys()))
@@ -105,6 +100,7 @@ if __name__ == "__main__":
             for deadline in deadline_list:
                 for sysidx, system in enumerate(plotprop.COMPARED_SYSTEMS):
                     try:
+                        print(system)
                         handle_dict1[system] = ax1.bar(
                             [variant_idx*2 - sysidx * 0.25],
                             data_dict[system][interval_duration][datarate][deadline][0],

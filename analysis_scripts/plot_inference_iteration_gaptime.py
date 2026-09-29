@@ -34,7 +34,7 @@ if __name__ == "__main__":
         label = []
         ticklabel = []
 
-        interval_count = 5
+        interval_count = 3
         interval_duration = args.duration
         datarate = args.datarate
         accumallow = args.accumallow

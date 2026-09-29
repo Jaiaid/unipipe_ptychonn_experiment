@@ -38,7 +38,7 @@ if __name__ == "__main__":
         label = []
         ticklabel = []
 
-        interval_count = 5
+        interval_count = 3
         interval_duration = args.duration
         datarate = args.datarate
 
@@ -95,8 +95,8 @@ if __name__ == "__main__":
                 inference_iteration_gap_timelist[i] = inference_iteration_gap_timelist[i] - interval_time_list[1]
     
             ax1.plot(
-                inference_iteration_gap_timelist[1:],
-                throughput_ara,
+                inference_iteration_gap_timelist[1::50],
+                throughput_ara[::50],
                 label=system, marker=SYSTEM_TO_COLORMARKER_DICT[system][1],
                 color=SYSTEM_TO_COLORMARKER_DICT[system][0]
             )
@@ -107,6 +107,7 @@ if __name__ == "__main__":
 
     ax1.set_ylabel("Train. Throughput(image/sec.)")
     ax1.set_xlabel("Time (sec.)")
+    ax1.set_ylim([0, 5000])
     ax1.legend(plotlegends)
     # ax1.set_xlabel("")
     # ax1.set_xticks(xticks)

@@ -8,6 +8,7 @@
  1. Collect mean inference accuracy, assume missed inference as 0 accuracy
 """
 
+import argparse
 import random
 import torch
 import numpy as np
@@ -61,8 +62,20 @@ if __name__ == "__main__":
     test_metrics = []
     performance_metrics = {"train time": [], "inference time": []}
 
+    # define arguments
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--model-type", "-type", type="str", choice=["1.25M", "5M", "10M", "20M", "100M", "200M"], help="which model to choose", default="1.25M")
+    
+    # get the arguments
+    args = arg_parser.parse_args()
+
     # init the model
-    model = ptychonn.model.recon_model()
+    model = ptychonn.model.get_model(type_name=args.model_type)
+    if os.path.exists(os.path.join("pretrained_model", "pretrained_bestmodel.pth")):
+        model = torch.load(os.path.join("pretrained_model", "pretrained_bestmodel.pth"), weights_only=False)
+    else:
+        print("Pretrained Model Not Found...Exiting")
+        exit()
 
     import time
     for interval_count in range(INC_TRAIN_INTERVAL):

@@ -1,0 +1,31 @@
+#!/bin/bash
+
+
+# dataset 1
+python3 plot_missrate_barclusters_deadlinevariation.py -d result_logs/smalldataset_deadlinevariation -o fig_missrate_deadlinevariation_dataset1
+python3 plot_missrate_barclusters_bratevariation.py -d result_logs/smalldataset_bratevariation -o fig_missrate_bratevariation_dataset1
+python3 plot_missrate_barclusters_dratevariation.py -d result_logs/smalldataset_dratevariation -o fig_missrate_dratevariation_dataset1
+
+python3 plot_nnerror_barclusters_deadlinevariation.py -d result_logs/smalldataset_deadlinevariation -o fig_nnerror_deadlinevariation_dataset1
+python3 plot_nnerror_barclusters_bratevariation.py -d result_logs/smalldataset_bratevariation -o fig_nnerror_bratevariation_dataset1
+python3 plot_nnerror_barclusters_dratevariation.py -d result_logs/smalldataset_dratevariation -o fig_nnerror_dratevariation_dataset1
+
+
+# dataset 2
+python3 plot_missrate_barclusters_deadlinevariation.py -d result_logs/largedataset_deadlinevariation -o fig_missrate_deadlinevariation_dataset2
+python3 plot_missrate_barclusters_bratevariation.py -d result_logs/largedataset_bratevariation -o fig_missrate_bratevariation_dataset2
+python3 plot_missrate_barclusters_dratevariation.py -d result_logs/largedataset_dratevariation -o fig_missrate_dratevariation_dataset2
+
+python3 plot_nnerror_barclusters_deadlinevariation.py -d result_logs/largedataset_deadlinevariation -o fig_nnerror_deadlinevariation_dataset2
+python3 plot_nnerror_barclusters_bratevariation.py -d result_logs/largedataset_bratevariation -o fig_nnerror_bratevariation_dataset2
+python3 plot_nnerror_barclusters_dratevariation.py -d result_logs/largedataset_dratevariation -o fig_nnerror_dratevariation_dataset2
+
+# # infer bs consumption comparison
+# # large dataset
+# python3 plot_inferbs_consumption.py -log1 result_logs/largedataset/multicontext/multicontext_5_80_1000_16_infer.log -log2 result_logs/largedataset/unipipe/unipipe_5_80_1000_16.log -outfbname fig_inferbs_large_5_80_1000_16
+# python3 plot_inferbs_consumption.py -log1 result_logs/largedataset/multicontext/multicontext_5_80_2000_16_infer.log -log2 result_logs/largedataset/unipipe/unipipe_5_80_2000_16.log -outfbname fig_inferbs_large_5_80_2000_16
+# python3 plot_inferbs_consumption.py -log1 result_logs/largedataset/multicontext/multicontext_5_80_3000_16_infer.log -log2 result_logs/largedataset/unipipe/unipipe_5_80_3000_16.log -outfbname fig_inferbs_large_5_80_3000_16
+# # small dataset
+# python3 plot_inferbs_consumption.py -log1 result_logs/smalldataset/multicontext/multicontext_5_80_1000_16_infer.log -log2 result_logs/smalldataset/unipipe/unipipe_5_80_1000_16.log -outfbname fig_inferbs_small_5_80_1000_16
+# python3 plot_inferbs_consumption.py -log1 result_logs/smalldataset/multicontext/multicontext_5_80_2000_16_infer.log -log2 result_logs/smalldataset/unipipe/unipipe_5_80_2000_16.log -outfbname fig_inferbs_small_5_80_2000_16
+# python3 plot_inferbs_consumption.py -log1 result_logs/smalldataset/multicontext/multicontext_5_80_3000_16_infer.log -log2 result_logs/smalldataset/unipipe/unipipe_5_80_3000_16.log -outfbname fig_inferbs_small_5_80_3000_16

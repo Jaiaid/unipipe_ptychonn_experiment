@@ -36,7 +36,7 @@ if __name__ == "__main__":
         label = []
         ticklabel = []
 
-        interval_count = 5
+        interval_count = 3
         interval_duration = args.duration
         datarate = args.datarate
         accumallow = args.accumallow
@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
     # for first interval data
     ax1.bar(x = np.arange(len(plotprop.COMPARED_SYSTEMS)) - 0.125, height=[data_dict[system][0][0] for system in plotprop.COMPARED_SYSTEMS], width=0.25, label="Interval 1", hatch="/")
-    ax1.bar(x = np.arange(len(plotprop.COMPARED_SYSTEMS)) + 0.125, height=[data_dict[system][0][3] for system in plotprop.COMPARED_SYSTEMS], width=0.25, label="Interval 4", hatch="o")
+    ax1.bar(x = np.arange(len(plotprop.COMPARED_SYSTEMS)) + 0.125, height=[data_dict[system][0][interval_count-2] for system in plotprop.COMPARED_SYSTEMS], width=0.25, label="Interval 4", hatch="o")
 
     ax1.set_ylabel("MSE Error")
     ax1.set_xlabel("")
@@ -86,10 +86,10 @@ if __name__ == "__main__":
     # for miss rate
     ax2 = ax1.twinx()
     ax2.plot(np.arange(len(plotprop.COMPARED_SYSTEMS)) - 0.125, [data_dict[system][1][0]*100 for system in plotprop.COMPARED_SYSTEMS], label="Interval 1", marker="x", mec="k", mfc="k")
-    ax2.plot(np.arange(len(plotprop.COMPARED_SYSTEMS)) + 0.125, [data_dict[system][1][3]*100 for system in plotprop.COMPARED_SYSTEMS], label="Interval 4", marker="+", mec="k", mfc="k")
+    ax2.plot(np.arange(len(plotprop.COMPARED_SYSTEMS)) + 0.125, [data_dict[system][1][interval_count-2]*100 for system in plotprop.COMPARED_SYSTEMS], label="Interval 4", marker="+", mec="k", mfc="k")
     ax2.set_ylabel("Miss Rate (%)")
 
-    ax1.legend([plotprop.COMPARED_SYSTEMS_LEGEND_DICT[system] for system in plotprop.COMPARED_SYSTEMS])
+    ax1.legend()
 
     fig1.savefig("figure_inferquality_{0}_{1}_{2}.pdf".format(args.duration, args.datarate, args.accumallow),
                  format="pdf", bbox_inches='tight')

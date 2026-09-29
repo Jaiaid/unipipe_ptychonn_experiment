@@ -7,7 +7,7 @@ import argparse
 import plotprop
 
 
-SYSTEM_TO_COLORMARKER_DICT = {"pretrained": ("c", "*"), "worst_case": ("r", "+"), "multicontext": ("g", "o"), "unipipe": ("b", "x")}
+SYSTEM_TO_COLORMARKER_DICT = {"pretrained": ("c", "*"), "multicontext": ("r", "+"), "unipipe": ("b", "x")}
 
 
 if __name__ == "__main__":
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         ticklabel = []
 
         for filename in os.listdir(data_dirpath):
-            if filename[-4:] != ".csv" or "sysstat" in filename:
+            if "transmission_state" not in filename:
                 continue
 
             tokens = filename.split(".")
@@ -43,67 +43,70 @@ if __name__ == "__main__":
             # 
             if system == "multicontext":
                 interval_count = int(tokens[-4])
-                interval_duration = int(tokens[-3])
+                deadline = int(tokens[-3])
                 datarate = int(tokens[-2])
-                deadline_msec = int(tokens[-1])
+                iprt = int(tokens[-1])
             else:
                 interval_count = int(tokens[-4])
-                interval_duration = int(tokens[-3])
+                deadline = int(tokens[-3])
                 datarate = int(tokens[-2])
-                deadline_msec = int(tokens[-1])
-            if deadline_msec not in [5 , 10]:
-                continue
+                iprt = int(tokens[-1])
+            # if deadline_msec not in [5 , 10]:
+            #     continue
 
-            if interval_duration not in data_dict[system]:
-                data_dict[system][interval_duration] = {}
+            if deadline not in data_dict[system]:
+                data_dict[system][deadline] = {}
 
             ticklabel.append(system)
             label.append(system)
             cur_label = label[-1]
 
             data_filepath = os.path.join(data_dirpath, filename)
+            line_count = 0
             with open(data_filepath) as fin:
                 # first reading it into a list
                 # to calculate both average and variance
-                missrate = []
+                missrate = 100
                 line_count = 0
                 for line in fin.readlines():
-                    run_missrate = []
                     tokens = line.split(",")
-                    
-                    run_missrate = [float(token) for token in tokens[-8:-4]]
-                    missrate.append(np.mean(np.array(run_missrate))*100)
+                    print(tokens, data_filepath)
+                    consumed = int(tokens[5])
+                    missed = int(tokens[6])
+                    missrate = missed * 100/(consumed + missed)
                     line_count += 1
 
-                if datarate not in data_dict[system][interval_duration]:
-                    data_dict[system][interval_duration][datarate] = {}
-                data_dict[system][interval_duration][datarate][deadline_msec] = [missrate] 
+                assert line_count == 1, "transmission state has more than single line, CHECK {0}".format(data_filepath)
+
+                if datarate not in data_dict[system][deadline]:
+                    data_dict[system][deadline][datarate] = {}
+                data_dict[system][deadline][datarate][iprt] = [missrate] 
     
     handle_dict = {}
     xticklabels = []
     xticks = []
     variant_idx = 0
-    interval_duration_list = sorted(list(data_dict["unipipe"].keys()))
-    for interval_duration in interval_duration_list:
-        datarate_list = sorted(list(data_dict["unipipe"][interval_duration].keys()))
+    deadline_list = sorted(list(data_dict["unipipe"].keys()))
+    for deadline in deadline_list:
+        datarate_list = sorted(list(data_dict["unipipe"][deadline].keys()))
 
         for datarate in datarate_list:
-            deadline_list = sorted(list(data_dict["unipipe"][interval_duration][datarate].keys()))
+            iprt_list = sorted(list(data_dict["unipipe"][deadline][datarate].keys()))
 
-            for deadline in deadline_list:
+            for iprt in iprt_list:
                 for sysidx, system in enumerate(plotprop.COMPARED_SYSTEMS):
                     try:
                         handle_dict[system] = ax1.bar(
                             [variant_idx*2 - sysidx * 0.25],
-                            data_dict[system][interval_duration][datarate][deadline][0],
+                            data_dict[system][deadline][datarate][iprt][0],
                             label=system, color=SYSTEM_TO_COLORMARKER_DICT[system][0], width=0.25
                         )
                     except Exception as e:
                         print(traceback.format_exc())
-                        print(system, interval_duration, datarate, deadline)
+                        # print(system, deadline, datarate, deadline)
                 
                 xticks.append(variant_idx*2)
-                xticklabels.append("{0} {1} {2:.0f}".format(interval_duration, datarate, deadline))
+                xticklabels.append("{0} {1} {2:.0f}".format(deadline, datarate, iprt))
                 variant_idx += 1
         
 
