@@ -104,7 +104,8 @@ def multicontext_inferonly_process(
 
         inferbs = min(
             MAX_INFER_BATCH_SIZE, 
-            int(math.floor(datarate * (time.time() - last_consumption_time)))
+            int(math.floor(datarate * (time.time() - last_consumption_time))),
+            len(teststream) - total_consumed
         )
 
         # print(inferbs, total_consumed, len(teststream))
@@ -319,13 +320,13 @@ if __name__ == "__main__":
     #     phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
     #     acquisition_rate=args.datarate, nn_uf=nn_uf, nn_ub=nn_ub
     # )
-    ipriter_time_limit, _ = ptychonn.perf_model.estimate_unipipe_schedule(
+    ipriter_time_limit, sol = ptychonn.perf_model.estimate_unipipe_schedule(
         phase_retrieval_genrate=args.ipr_throughput, deadline_sec=deadline_sec,
         acquisition_rate=args.datarate, ground_truth_count=args.gtcount,
-        maxbs = 128, forward_time_per_sample=forward_time_per_sample,
+        maxbs=128, forward_time_per_sample=forward_time_per_sample,
         backward_time_per_sample=backward_time_per_sample
     )
-
+    print("Estimated IPR Iteration Time Limit:", ipriter_time_limit, sol)
     if args.large_dataset:
         total_runtime = args.interval_count * args.interval_duration
     else:
@@ -351,8 +352,9 @@ if __name__ == "__main__":
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
         start_timestamp=start_timestamp, datarate=args.datarate,
-        deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
+        deadline_sec=args.deadline/1000, stream_alive_time=total_runtime+args.deadline/1000
     )
+    total_runtime += args.deadline/1000
 
     total_consumed = 0
     # to check which ipr iteration is finished, to identify appropriate model directory
@@ -378,6 +380,7 @@ if __name__ == "__main__":
         infer_readidx_curpos = cur_ipriteration*(trainsize + infersize) + trainsize
         infer_datareader.set_len(infersize)
         infer_datareader.set_curreadidx(infer_readidx_curpos)
+        # print(infer_readidx_curpos, train_readidx_curpos, infer_datareader.cur_readidx)
 
         logger.log("INFER DATAREADER STATUS", infer_datareader.cur_readidx, infersize)
         # put unipipe traininfer for one ipriteration data here

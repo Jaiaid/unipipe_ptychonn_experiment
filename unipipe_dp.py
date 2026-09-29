@@ -140,6 +140,10 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 teststream.reposition(forward=forward)
 
             inferbs = iteration_schedule[cur_iteration_idx][1]
+            # inferbs = min(
+            #     MAX_INFER_BATCH_SIZE, 
+            #     int(math.floor(datarate * (time.time() - last_consumption_time)))
+            # )
             # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
             #     pass
             
@@ -500,6 +504,7 @@ if __name__ == "__main__":
         backward_time_per_sample=backward_time_per_sample
     )
     logger.log("UNIPIPE DP TIME LIMIT,SCHEDULE", unipipe_time_limit, iteration_schedule)
+    print(unipipe_time_limit, iteration_schedule, unipipe_time_limit*args.datarate)
 
     # warmup run
     warmup_start_time = time.time()
@@ -536,8 +541,9 @@ if __name__ == "__main__":
     cur_interval_start_time = current_time
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
         start_timestamp=start_time, datarate=args.datarate,
-        deadline_sec=deadline_sec, stream_alive_time=total_runtime
+        deadline_sec=deadline_sec, stream_alive_time=total_runtime+deadline_sec
     )
+    total_runtime += deadline_sec
 
     # training state controller variable initiation
     logger.log("STARTING ", start_time)
@@ -591,6 +597,7 @@ if __name__ == "__main__":
         logger.log(
             "CURIPRITERATION,TIME_LIMIT,TRAIN_SIZE,INFER_SIZE",
             cur_ipriteration, unipipe_time_limit, trainsize, infersize)
+        # print(trainsize, infersize, infer_datareader.cur_readidx, train_datareader.cur_readidx_begin)
 
         # calculate number of epoch to run the unipipe train
         # it depends on some value which are unknown initially for that we just set an arbitrary value

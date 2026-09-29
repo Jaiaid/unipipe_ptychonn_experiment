@@ -413,6 +413,7 @@ if __name__ == "__main__":
     logger.log("MULTICONTEXT TRAIN CONSUMPTION START", start_time)
     current_time = start_time
     cur_interval_start_time = current_time
+    total_runtime += args.deadline / 1000
 
     trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
     # from profile data, tuned for throughput
@@ -446,6 +447,7 @@ if __name__ == "__main__":
             infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
             train_readidx_curpos = cur_ipriteration*(trainsize + infersize)
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
+            # print(train_readidx_curpos, trainsize, train_datareader.cur_ipriteration)
 
             logger.log("TRAIN DATAREADER STATUS", train_readidx_curpos, trainsize, train_datareader.cur_ipriteration)
 

@@ -307,8 +307,9 @@ if __name__ == "__main__":
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
         start_timestamp=start_timestamp, datarate=args.datarate,
-        deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
+        deadline_sec=args.deadline/1000, stream_alive_time=total_runtime+args.deadline/1000
     )
+    total_runtime += args.deadline/1000
 
     total_consumed = 0
     logger.log("PRETRAINED NOIPR CONSUMPTION START", start_timestamp)
