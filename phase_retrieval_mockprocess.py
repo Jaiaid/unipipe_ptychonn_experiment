@@ -83,7 +83,7 @@ if __name__=="__main__":
             acquisition_rate=args.acquisition_rate,
             deadline_sec=deadline_sec)
     elif args.unipipedp_scheduler:
-        time_stretch_continuous_data_process = math.ceil((args.gtcount / args.generation_rate)*args.acquisition_rate)/args.acquisition_rate
+        time_stretch_continuous_data_process = args.gtcount / args.generation_rate # math.ceil((args.gtcount / args.generation_rate)*args.acquisition_rate)/args.acquisition_rate
     elif args.pretrained_scheduler:
         time_stretch_continuous_data_process = perf_model.estimate_T_IPR_pretrained(
             phase_retrieval_genrate=args.generation_rate,
@@ -96,7 +96,7 @@ if __name__=="__main__":
             deadline_sec=deadline_sec)
 
     if not args.unipipedp_scheduler:
-        skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate)) + 1
+        skip_data_idx = math.floor(time_stretch_continuous_data_process * (args.acquisition_rate - args.generation_rate))
     else:
         skip_data_idx = math.floor(time_stretch_continuous_data_process * args.acquisition_rate) - args.gtcount
 
@@ -108,6 +108,7 @@ if __name__=="__main__":
     print("waiting for produce acknowledgement of starting", time.time())
     # blockingwait until data streaming start
     start_timestamp, total_streamtime = ipc.producer_transmit_wait()
+    total_runtime = total_streamtime + deadline_sec
     print("data capture start", start_timestamp)
 
     current_timestamp = start_timestamp
@@ -119,7 +120,7 @@ if __name__=="__main__":
     else:
         time.sleep(1/args.acquisition_rate)
 
-    while current_timestamp - start_timestamp < total_streamtime:
+    while current_timestamp - start_timestamp < total_runtime:
         if args.unipipedp_scheduler:
             current_interval_start_timestamp = start_timestamp + (current_generate_idx + 1) / args.acquisition_rate # cur_ipriteration * time_stretch_continuous_data_process + args.gtcount/args.acquisition_rate
         else:
@@ -192,9 +193,9 @@ if __name__=="__main__":
 
         # print("skipping to {0} by jumping {1}".format(current_generate_idx + skip_data_idx - 1, skip_data_idx - 1))
         if args.unipipedp_scheduler and (args.acquisition_rate == 2000 or args.acquisition_rate == 4000):
-            current_generate_idx = (skip_data_idx+1)*cur_ipriteration
+            current_generate_idx = (skip_data_idx+args.gtcount)*cur_ipriteration
         else:
-            current_generate_idx = skip_data_idx*cur_ipriteration
+            current_generate_idx = (skip_data_idx+args.gtcount)*cur_ipriteration
 
     print("==================================IPR Mock Status=================================")
     print("Data rate: {0}Hz".format(args.acquisition_rate))
