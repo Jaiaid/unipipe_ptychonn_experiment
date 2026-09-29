@@ -8,16 +8,18 @@ from skimage.metrics import structural_similarity as ssim
 from ptychonn import dataset
 from ptychonn import model
 from ptychonn import parameters
+from plot_parameters import YTICK_LABEL_KW, FIGSIZE, SYSTEM_NAME_LIST, SYSTEM_NAME_TO_LEGEND_DICT, SYSTEM_NAME_TO_HATCH_DICT, CSV_FILENAME_FMT, AXLABEL_KW, YTICK_LABEL_KW, LEGEND_COLSPACING, LEGEND_PROP
+from matplotlib.ticker import FormatStrFormatter
 
-PRETRAINED_MODELPATH = "pretrained_model/pretrained_bestmodel.pth"
+PRETRAINED_MODELPATH = "pretrained_model/pretrained_bestmodel_ptychonn.pth"
 ORACLE_MODELPATH = "pretrained_model/oracle_model.pth"
 DEVICE="cuda"
 BS = 1
 TRAIN_BS = 1
 
-INTERVAL_COUNT = 110#322#110
+INTERVAL_COUNT =322#322#110
 # so training dataset is size of 1 
-TRAIN_FRACTION = 0.0054#0.0158 # 0.0054
+TRAIN_FRACTION = 0.0158 #0.0054# 0.0054
 EPOCH = 1
 
 
@@ -70,7 +72,7 @@ if __name__=="__main__":
     intervaltrained_model_phase_ssim_list = []
 
     for i in range(0, diffr_data.shape[0], BS):
-        if i % interval_length == 0:
+        if i % interval_length == 0: # if we are at the beginning of an interval, do training on the next training_dataset_length data points
             # at training phase
             # not well-written but I dont have time
             intervaltrained_model.train()
@@ -114,7 +116,6 @@ if __name__=="__main__":
         if data.shape[0] == 0:
             continue
 
-        data = torch.zeros((min(diffr_data.shape[0]-i, BS), 1, 64, 64)).to(DEVICE)
         pretrained_model_output = pretrained_model.forward(data)
         oracle_model_output = oracle_model.forward(data)
         intervaltrained_model_output = intervaltrained_model.forward(data)
@@ -127,12 +128,12 @@ if __name__=="__main__":
         oracle_model_error += torch.mean((oracle_model_output[1].cpu() - torch.tensor(gt_data_phase[i:i+data.shape[0]])) ** 2).item()
         intervaltrained_model_error += torch.mean((intervaltrained_model_output[1].cpu() - torch.tensor(gt_data_phase[i:i+data.shape[0]])) ** 2).item()
         
-        if i == 2:
-            print(data.shape, np.mean(pretrained_model_output[0].cpu().detach().numpy()), np.mean(pretrained_model_output[1].cpu().detach().numpy()))
-            print(data.shape, np.mean(oracle_model_output[0].cpu().detach().numpy()), np.mean(oracle_model_output[1].cpu().detach().numpy()))
-            print(data.shape, np.mean(intervaltrained_model_output[0].cpu().detach().numpy()), np.mean(intervaltrained_model_output[1].cpu().detach().numpy()))
+        # if i == 2:
+        #     print(data.shape, np.mean(pretrained_model_output[0].cpu().detach().numpy()), np.mean(pretrained_model_output[1].cpu().detach().numpy()))
+        #     print(data.shape, np.mean(oracle_model_output[0].cpu().detach().numpy()), np.mean(oracle_model_output[1].cpu().detach().numpy()))
+        #     print(data.shape, np.mean(intervaltrained_model_output[0].cpu().detach().numpy()), np.mean(intervaltrained_model_output[1].cpu().detach().numpy()))
             
-            print(np.mean(data.cpu().detach().numpy()))
+        #     print(np.mean(data.cpu().detach().numpy()))
 
         #     print(data.shape, gt_data_phase[i:i+data.shape[0]].shape, pretrained_model_output[1].cpu().shape)
         #     print(f"Data idx {i}: Pretrained Model Amp. Error: {torch.mean((pretrained_model_output[0].cpu() - torch.tensor(gt_data_amp[i:i+data.shape[0]])) ** 2).item()}, Pretrained Model Ph. Error: {torch.mean((pretrained_model_output[1].cpu() - torch.tensor(gt_data_phase[i:i+data.shape[0]])) ** 2).item()}")
@@ -142,9 +143,9 @@ if __name__=="__main__":
         # print(pretrained_model_error, oracle_model_error, intervaltrained_model_error)
 
         # Compute SSIM
-        pretrained_model_phase_ssim = ssim(pretrained_model_output[1].cpu().detach().numpy()[0], gt_data_phase[i:i+data.shape[0]], multichannel=True, data_range=2)
-        oracle_model_phase_ssim = ssim(oracle_model_output[1].cpu().detach().numpy()[0], gt_data_phase[i:i+data.shape[0]], multichannel=True, data_range=2)
-        intervaltrained_model_phase_ssim = ssim(intervaltrained_model_output[1].cpu().detach().numpy()[0], gt_data_phase[i:i+data.shape[0]], multichannel=True, data_range=2)
+        pretrained_model_phase_ssim = ssim(pretrained_model_output[1].cpu().detach().numpy()[0].reshape(64, 64), gt_data_phase[i:i+data.shape[0]].reshape(64,64), multichannel=False, data_range=2)
+        oracle_model_phase_ssim = ssim(oracle_model_output[1].cpu().detach().numpy()[0].reshape(64, 64), gt_data_phase[i:i+data.shape[0]].reshape(64, 64), multichannel=False, data_range=2)
+        intervaltrained_model_phase_ssim = ssim(intervaltrained_model_output[1].cpu().detach().numpy()[0].reshape(64, 64), gt_data_phase[i:i+data.shape[0]].reshape(64, 64), multichannel=False, data_range=2)
         
         pretrained_model_phase_ssim_list.append(pretrained_model_phase_ssim)
         oracle_model_phase_ssim_list.append(oracle_model_phase_ssim)
@@ -195,14 +196,20 @@ if __name__=="__main__":
     print("IntervalTrained Model Errors Moving Average:", sum(intervaltrained_model_error_list)/len(intervaltrained_model_error_list))
 
 
-    fig, ax = plot.subplots(figsize=(4,2.25))
+    fig, ax = plot.subplots(figsize=FIGSIZE)
     ax.plot(pretrained_moving_average, label="Pretrained Model")
     ax.plot(oracle_moving_average, label="Oracle Model")
     ax.plot(intervaltrained_model_moving_average, label="Continual Trained Model")
-    ax.set_xlabel("Data Stream Index (x{0})".format(TREND_BS))
-    ax.set_ylabel("Mean Square Error")
-    ax.legend(frameon=False, fontsize=7)
-    fig.savefig("fig_oracle_20percentpretrained_intervaltrained_error_distribution.png", dpi=600)
+    ax.set_xlabel("Data Stream Index (x{0})".format(TREND_BS), **AXLABEL_KW)
+    ax.set_ylabel("Mean Square Error", **AXLABEL_KW)
+    ax.set_yticks(np.arange(0.2, 1.4, 0.2))
+    ax.set_ylim([0.3, 1.2])
+    ax.set_yticklabels(np.arange(0.2, 1.4, 0.2), **YTICK_LABEL_KW)
+    ax.yaxis.set_major_formatter(FormatStrFormatter('%0.1f'))
+    ax.set_xticks(np.arange(0, 45, 10))
+    ax.set_xticklabels(np.arange(0, 45, 10), **YTICK_LABEL_KW)
+    ax.legend(frameon=False, prop=LEGEND_PROP)
+    fig.savefig("fig_oracle_20percentpretrained_intervaltrained_error_distribution.png", dpi=600, bbox_inches="tight")
     fig.savefig("fig_oracle_20percentpretrained_intervaltrained_error_distribution.pdf", format="pdf", dpi=600, bbox_inches="tight")
 
 
@@ -229,15 +236,15 @@ if __name__=="__main__":
     # print("IntervalTrained Model Errors Moving Average:", sum(intervaltrained_model_moving_average)/len(intervaltrained_model_moving_average))
 
 
-    # fig, ax = plot.subplots(figsize=(4,2.25))
-    # ax.plot(pretrained_moving_average, label="Pretrained Model")
-    # ax.plot(oracle_moving_average, label="Oracle Model")
-    # ax.plot(intervaltrained_model_moving_average, label="Oracle Model")
-    # ax.set_xlabel("Data Stream Index (x{0})".format(TREND_BS))
-    # ax.set_ylabel("Structural Similarity Index")
-    # ax.legend(frameon=False)
-    # fig.savefig("fig_oracle_20percentpretrained_intervaltrained_phase_ssim_distribution.png", dpi=600)
-    # fig.savefig("fig_oracle_20percentpretrained_intervaltrained_phase_ssim_distribution.pdf", format="pdf", dpi=600, bbox_inches="tight")
+    fig, ax = plot.subplots(figsize=FIGSIZE)
+    ax.plot(pretrained_moving_average, label="Pretrained Model")
+    ax.plot(oracle_moving_average, label="Oracle Model")
+    ax.plot(intervaltrained_model_moving_average, label="Continual Trained Model")
+    ax.set_xlabel("Data Stream Index (x{0})".format(TREND_BS), **AXLABEL_KW)
+    ax.set_ylabel("Structural Similarity Index", **AXLABEL_KW)
+    ax.legend(frameon=False, prop=LEGEND_PROP)
+    fig.savefig("fig_oracle_20percentpretrained_intervaltrained_phase_ssim_distribution.png", dpi=600)
+    fig.savefig("fig_oracle_20percentpretrained_intervaltrained_phase_ssim_distribution.pdf", format="pdf", dpi=600, bbox_inches="tight")
 
     # print(pretrained_model_error_list, oracle_model_error_list)
     
