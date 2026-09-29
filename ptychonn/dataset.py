@@ -30,11 +30,11 @@ def get_diffrdata_large(skip_line=0) -> np.ndarray:
     diffr_data = h5py.File(os.path.join(parameters.LARGE_DATASET_DIR, parameters.LARGE_DATASET_FILE))["data"]["reciprocal"][:]
     diffr_data = diffr_data.reshape(parameters.DIFFRLINE_L, parameters.SCANPOINT_L, parameters.H_L, parameters.W_L)
 
-    diffr_data_red = np.zeros((parameters.DIFFRLINE_L, parameters.SCANPOINT_L,64,64), float)
+    diffr_data_red = np.zeros((parameters.DIFFRLINE_L-skip_line, parameters.SCANPOINT_L,64,64), np.float32)
     for i in range(skip_line, diffr_data.shape[0]):
         for j in range(diffr_data.shape[1]):
-            diffr_data_red[i,j] = resize(diffr_data[i,j],(64,64),preserve_range=True, anti_aliasing=True)
-            diffr_data_red[i,j] = np.where(diffr_data_red[i,j]<3,0,diffr_data_red[i,j])
+            diffr_data_red[i-skip_line,j] = diffr_data[i,j,32:-32,32:-32] # resize(diffr_data[i,j],(64,64),preserve_range=True, anti_aliasing=True)
+            diffr_data_red[i-skip_line,j] = np.where(diffr_data_red[i-skip_line,j]<3,0,diffr_data_red[i-skip_line,j])
 
     return diffr_data_red
 
@@ -126,17 +126,17 @@ def get_large_gtdata(skip_line=0) -> np.ndarray:
     ground_truth_amp = np.abs(ground_truth_data)
     ground_truth_ph = np.angle(ground_truth_data)
     
-    Y_I = np.zeros((ground_truth_data.shape[0], 64, 64))
-    Y_phi = np.zeros((ground_truth_data.shape[0], 64, 64))
+    Y_I = np.zeros((ground_truth_data.shape[0]-skip_line*parameters.SCANPOINT_L, 64, 64), dtype=np.float32)
+    Y_phi = np.zeros((ground_truth_data.shape[0]-skip_line*parameters.SCANPOINT_L, 64, 64), dtype=np.float32)
     
     # we will generate the data array by reading each line from ground truth amp. and phase data
-    for i in range(skip_line, ground_truth_data.shape[0]):
+    for i in range(skip_line*parameters.SCANPOINT_L, ground_truth_data.shape[0]):
         # for NN feeding
         gt_amp = resize(ground_truth_amp[i],(64,64), preserve_range=True, anti_aliasing=True)
         gt_ph = resize(ground_truth_ph[i],(64,64), preserve_range=True, anti_aliasing=True)
 
-        Y_I[i] = gt_amp
-        Y_phi[i] = gt_ph
+        Y_I[i-skip_line*parameters.SCANPOINT_L] = gt_amp
+        Y_phi[i-skip_line*parameters.SCANPOINT_L] = gt_ph
 
     return Y_I, Y_phi
 
@@ -155,8 +155,8 @@ def get_large_dataset(datarate, deadline, overrideratio=None, IPR_throughput=Non
     ntest_percentage = 0
     nvalid_percentage = 0
 
-    diffr_data = h5py.File(os.path.join(LARGE_DATASET_DIR, LARGE_DATASET_FILE))["data"]["reciprocal"]
-    diffr_data = diffr_data.reshape(DIFFRLINE_L, SCANPOINT_L, H_L, W_L)
+    diffr_data = h5py.File(os.path.join(parameters.LARGE_DATASET_DIR, parameters.LARGE_DATASET_FILE))["data"]["reciprocal"][:]
+    diffr_data = diffr_data.reshape(parameters.DIFFRLINE_L, parameters.SCANPOINT_L, parameters.H_L, parameters.W_L)
 
     diffr_data_red = np.zeros((diffr_data.shape[0],diffr_data.shape[1],64,64), float)
     for i in range(1, diffr_data.shape[0]):
@@ -164,7 +164,7 @@ def get_large_dataset(datarate, deadline, overrideratio=None, IPR_throughput=Non
             diffr_data_red[i,j] = resize(diffr_data[i,j],(64,64),preserve_range=True, anti_aliasing=True)
             diffr_data_red[i,j] = np.where(diffr_data_red[i,j]<3,0,diffr_data_red[i,j])
 
-    ground_truth_data = h5py.File(os.path.join(LARGE_DATASET_DIR, LARGE_DATASET_FILE))["data"]["real"]
+    ground_truth_data = h5py.File(os.path.join(parameters.LARGE_DATASET_DIR, parameters.LARGE_DATASET_FILE))["data"]["real"]
     ground_truth_amp = np.abs(ground_truth_data)
     ground_truth_ph = np.angle(ground_truth_data)
 
