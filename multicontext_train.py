@@ -189,17 +189,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 copy.deepcopy(model).to("cpu"),
                 next_model
             ))
-            # ptychonn.process_funcs.update_saved_model(
-            #     model=model,
-            #     path=os.path.join(
-            #         "/dev/shm/", chkpt_dir
-            #     ),
-            #     name=ptychonn.multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
-            # )
-            # ptychonn.ipc.create_shm_marker(
-            #     os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)))
-            # ptychonn.ipc.create_shm_marker(
-            #     os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)+str(time.time())))
+            
 
             taken_time = time.time() - model_save_start_time
             model_save_spenttime_list.append(taken_time)

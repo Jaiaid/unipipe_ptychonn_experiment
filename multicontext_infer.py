@@ -108,11 +108,6 @@ def multicontext_inferonly_process(
             len(teststream) - total_consumed
         )
 
-        # print(inferbs, total_consumed, len(teststream))
-        # inferbs = MAX_INFER_BATCH_SIZE
-        # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
-        #     pass
-        # print(len(teststream)-total_consumed, inferbs)
         if inferbs > 0:
             logger.log("STREAM ACCUMULATED COUNT", inferbs, last_consumption_time, datarate * (time.time() - last_consumption_time))
             try:

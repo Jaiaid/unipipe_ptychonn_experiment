@@ -140,12 +140,6 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 teststream.reposition(forward=forward)
 
             inferbs = iteration_schedule[cur_iteration_idx][1]
-            # inferbs = min(
-            #     MAX_INFER_BATCH_SIZE, 
-            #     int(math.floor(datarate * (time.time() - last_consumption_time)))
-            # )
-            # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
-            #     pass
             
             if inferbs > 0 and total_consumed < len(teststream):
                 try:
@@ -233,37 +227,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 ))
                 for i in range(len(inferidxlist)):
                     inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                #     # inference is done so remove the data from shm
-                #     # as inference will be done only once
-                #     # so delete
-                #     try:
-                #         ptychonn.ipc.remove_shm(
-                #             ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
-                #         )
-
-                #         ptychonn.ipc.create_shm_data(
-                #             os.path.join(
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                #             ),
-                #             pred_ph_cpu_np[i]
-                #         )
-                #         ptychonn.ipc.create_shm_data(
-                #             os.path.join(
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                #             ),
-                #             pred_amps_cpu_np[i]
-                #         )
-                    
-                #         inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                #     except FileNotFoundError as ex:
-                #         infer_delay_missed += 1
-                #         INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
                 
-                # logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
-                # if infer_delay_missed > 0:
-                #     teststream.reposition(forward=True)
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
 
