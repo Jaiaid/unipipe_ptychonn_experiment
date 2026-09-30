@@ -120,37 +120,7 @@ def pretrained_inferonly_process(
             ))
             for i in range(len(inferidxlist)):
                 inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-            #     try:
-            #         ptychonn.ipc.remove_shm(
-            #             ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
-            #         )
-
-            #         ptychonn.ipc.create_shm_data(
-            #             os.path.join(
-            #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-            #                 ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-            #             ),
-            #             pred_ph_cpu_np[i]
-            #         )
-            #         ptychonn.ipc.create_shm_data(
-            #             os.path.join(
-            #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-            #                 ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-            #             ),
-            #             pred_amps_cpu_np[i]
-            #         )
-                
-            #         inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-            #     except FileNotFoundError as ex:
-            #         infer_delay_missed += 1
-            #         INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
-
-            # logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
-            # if infer_delay_missed > 0:
-            #     teststream.reposition(forward=True)
-                # print(torch.mean(pred_amps[i]), torch.mean(pred_phs[i]), np.mean(pred_amps_cpu_np[i]), np.mean(pred_ph_cpu_np[i]))
-                # print(torch.mean(ft_images[i]))
-                # exit()
+            
 
         # update total missed count
         logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
@@ -307,8 +277,9 @@ if __name__ == "__main__":
     # init the data reader
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
         start_timestamp=start_timestamp, datarate=args.datarate,
-        deadline_sec=args.deadline/1000, stream_alive_time=total_runtime
+        deadline_sec=args.deadline/1000, stream_alive_time=total_runtime+args.deadline/1000
     )
+    total_runtime += args.deadline/1000
 
     total_consumed = 0
     logger.log("PRETRAINED NOIPR CONSUMPTION START", start_timestamp)

@@ -93,7 +93,7 @@ schedule_entry_matrix schedule_solver(
     int upto_train_size, upto_infer_size;
     for(upto_train_size=0;upto_train_size<=traindatset_size;upto_train_size++)
     {
-        for(upto_infer_size=0;upto_infer_size<=accum_while_gt_generated;upto_infer_size++)
+        for(upto_infer_size=0;upto_infer_size<=accum_while_gt_generated-traindatset_size;upto_infer_size++)
         {
             if (upto_train_size + upto_infer_size <= max_batch_size) {
                 dp_ara[upto_train_size][upto_infer_size][2] = EST_ITERTIME(

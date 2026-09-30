@@ -140,8 +140,6 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 teststream.reposition(forward=forward)
 
             inferbs = iteration_schedule[cur_iteration_idx][1]
-            # while int(math.floor(datarate * (time.time() - last_consumption_time))) < inferbs and time.time() - start_timestamp < time_limit:
-            #     pass
             
             if inferbs > 0 and total_consumed < len(teststream):
                 try:
@@ -229,37 +227,7 @@ def unipipe_dp_traininfer(model, trainloader:ptychonn.shm_datareader.SHMTrainDat
                 ))
                 for i in range(len(inferidxlist)):
                     inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                #     # inference is done so remove the data from shm
-                #     # as inference will be done only once
-                #     # so delete
-                #     try:
-                #         ptychonn.ipc.remove_shm(
-                #             ptychonn.parameters.SHM_DATA_DIFFR_NAMEFMT.format(inferidxlist[i])
-                #         )
-
-                #         ptychonn.ipc.create_shm_data(
-                #             os.path.join(
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_PHASE_NAMEFMT.format(inferidxlist[i])
-                #             ),
-                #             pred_ph_cpu_np[i]
-                #         )
-                #         ptychonn.ipc.create_shm_data(
-                #             os.path.join(
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_FOLDER,
-                #                 ptychonn.parameters.SHM_MARKER_NNRES_AMP_NAMEFMT.format(inferidxlist[i])
-                #             ),
-                #             pred_amps_cpu_np[i]
-                #         )
-                    
-                #         inferdatalist_fileobj.write("{0},{1}\n".format(inferidxlist[i], ipriteration_no))
-                #     except FileNotFoundError as ex:
-                #         infer_delay_missed += 1
-                #         INFERENCE_MISSED_DUE_TO_INFERDELAY_COUNT += 1
                 
-                # logger.log("INFER DELAY MISS COUNT", infer_delay_missed)
-                # if infer_delay_missed > 0:
-                #     teststream.reposition(forward=True)
             # update total missed count
             logger.log("FORWARD PASS TOOK(sec.)", forward_pass_done_time - forward_pass_arrival_time)
 
@@ -500,6 +468,7 @@ if __name__ == "__main__":
         backward_time_per_sample=backward_time_per_sample
     )
     logger.log("UNIPIPE DP TIME LIMIT,SCHEDULE", unipipe_time_limit, iteration_schedule)
+    print(unipipe_time_limit, iteration_schedule, unipipe_time_limit*args.datarate)
 
     # warmup run
     warmup_start_time = time.time()
@@ -536,8 +505,9 @@ if __name__ == "__main__":
     cur_interval_start_time = current_time
     infer_datareader = ptychonn.shm_datareader.SHMInferDataReader(
         start_timestamp=start_time, datarate=args.datarate,
-        deadline_sec=deadline_sec, stream_alive_time=total_runtime
+        deadline_sec=deadline_sec, stream_alive_time=total_runtime+deadline_sec
     )
+    total_runtime += deadline_sec
 
     # training state controller variable initiation
     logger.log("STARTING ", start_time)
@@ -591,6 +561,7 @@ if __name__ == "__main__":
         logger.log(
             "CURIPRITERATION,TIME_LIMIT,TRAIN_SIZE,INFER_SIZE",
             cur_ipriteration, unipipe_time_limit, trainsize, infersize)
+        # print(trainsize, infersize, infer_datareader.cur_readidx, train_datareader.cur_readidx_begin)
 
         # calculate number of epoch to run the unipipe train
         # it depends on some value which are unknown initially for that we just set an arbitrary value

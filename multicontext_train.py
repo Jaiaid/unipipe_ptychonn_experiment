@@ -189,17 +189,7 @@ def multicontext_train(model, trainloader:ptychonn.shm_datareader.SHMTrainDataRe
                 copy.deepcopy(model).to("cpu"),
                 next_model
             ))
-            # ptychonn.process_funcs.update_saved_model(
-            #     model=model,
-            #     path=os.path.join(
-            #         "/dev/shm/", chkpt_dir
-            #     ),
-            #     name=ptychonn.multicontext_parameters.MULTICONTEXT_IPRITER_MODELNAME_FMT.format(next_model)
-            # )
-            # ptychonn.ipc.create_shm_marker(
-            #     os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)))
-            # ptychonn.ipc.create_shm_marker(
-            #     os.path.join(chkpt_dir, ptychonn.multicontext_parameters.MULTICONTEXT_SHM_MARKER_IPRITER_END.format(next_model)+str(time.time())))
+            
 
             taken_time = time.time() - model_save_start_time
             model_save_spenttime_list.append(taken_time)
@@ -413,6 +403,7 @@ if __name__ == "__main__":
     logger.log("MULTICONTEXT TRAIN CONSUMPTION START", start_time)
     current_time = start_time
     cur_interval_start_time = current_time
+    total_runtime += args.deadline / 1000
 
     trainbs = ptychonn.parameters.TRAIN_BATCH_SIZE
     # from profile data, tuned for throughput
@@ -446,6 +437,7 @@ if __name__ == "__main__":
             infersize = int(math.floor(ipriter_time_limit * (args.datarate - args.ipr_throughput)))
             train_readidx_curpos = cur_ipriteration*(trainsize + infersize)
             train_datareader.set_curipriteration(cur_ipriteration=cur_ipriteration)
+            # print(train_readidx_curpos, trainsize, train_datareader.cur_ipriteration)
 
             logger.log("TRAIN DATAREADER STATUS", train_readidx_curpos, trainsize, train_datareader.cur_ipriteration)
 
