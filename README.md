@@ -1,4 +1,4 @@
-## UniPipe: Inference Serving and Fine-Tuning on Single GPU for Stable Inference Latency in ML Surrogate Workflow
+# UniPipe: Inference Serving and Fine-Tuning on Single GPU for Stable Inference Latency in ML Surrogate Workflow
 
 In this repository we present our prototype implementation of real-time DNN surrogate processing of a datastream using shared context inference and training and reproducability methods for the results published in IEEE eScience'26. The repository features:
 
@@ -11,7 +11,7 @@ In this repository we present our prototype implementation of real-time DNN surr
 We evaluate our system on DNN surrogate based Ptychographic phase image restoration. The ground truth generation is done through classical computation which is slow. To maintain the deadline occasionally processing is handle over to the neural network inference. As the sample view changes over time neural network needs retraining. For this retraining, classical computational method generated result is used as ground truth.
 
 
-### Environment Setup
+## Environment Setup
 
 We assume that it is inside Linux and ``/dev/shm`` is available for shared memory communication.
 
@@ -40,13 +40,13 @@ We assume that it is inside Linux and ``/dev/shm`` is available for shared memor
 **Note:** Step 1 is needed to download dataset 1 as described in the published paper and reproduce the results described. If the goal is to use **UniPipe** approach to deploy a DNN surrogate workflow, starting from Step 2 will suffice.
 
 
-### UniPipe Usage
+## UniPipe Usage
 
 This is still at prototype phase. We request to look into `unipipe_dp.py` script and check into the `unipipe_dp_traininfer` function for the training loop (line 113-322). The forward pass is used to process both training and inference data (line 197-209). Then the training data's results are extracted and loss is calculated and `.backward()` is called (line 256-279).
 
 We are working on to put more detail and a more user-friendly version.
 
-### Reproducing eScience'26 Results
+## Reproducing eScience'26 Results
 
 **Note:** Step 3 and 4 can be skipped by downloading the models from this google drive public [link](https://drive.google.com/drive/folders/12jLstRQpE0N8cBv51x8zuuNeQLEiHMOL?usp=sharing) and save them into `pretrained_model` subdirectory w.r.t repo. root.
 
@@ -82,12 +82,12 @@ Followings are the steps to reproduce eScience'26 published results.
   All generated plots will be in the root folder.
 
 
-### Future Work
+## Future Work
 * Validation of UniPipe in more DNN surrogate workflow where datadrift shows up across the datastream when using a pretrained model.
 
 * Investigate and incorporate training dataset exempler selection when fine-tuning for more general and stable training.
 
 * A more user-friendly abstraction and implementation of UniPipe.
 
-### Contact
+## Contact
 For query regarding usage, repository, and paper, please contact [jm5071@rit.edu](mailto:jm5071@rit.edu) 
