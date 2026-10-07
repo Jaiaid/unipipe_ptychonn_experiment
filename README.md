@@ -89,5 +89,18 @@ Followings are the steps to reproduce eScience'26 published results.
 
 * A more user-friendly abstraction and implementation of UniPipe.
 
+
+## Citation
+If you use this work in your research, please consider citing our work:
+
+```
+@inproceedings{mobin2026unipipe,
+  title={UniPipe: Unified Inference Serving and Fine-Tuning for Deadline-Constrained DNN Surrogate Workflows},
+  author={Mobin, Jaiaid and Maurya, Avinash and Rafique, M Mustafa and Nicolae, Bogdan},
+  year={2026},
+  organization={In Proceedings of the 22nd IEEE International eScience Conference (eScience)}
+}
+```
+
 ## Contact
 For query regarding usage, repository, and paper, please contact [jm5071@rit.edu](mailto:jm5071@rit.edu) 
